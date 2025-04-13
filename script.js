@@ -1,11 +1,13 @@
 let allTransactions = [];
+let totalIncome = 0;
 let budgetChart = null;
 
+// Process the uploaded file
 document.getElementById('process').addEventListener('click', function() {
     const fileInput = document.getElementById('upload');
     const file = fileInput.files[0];
     if (!file) {
-        alert('Please upload a Google Sheets file (.xlsx or .csv).');
+        alert('Please upload a file (.xlsx or .csv).');
         return;
     }
 
@@ -13,46 +15,64 @@ document.getElementById('process').addEventListener('click', function() {
     reader.onload = function(e) {
         try {
             const data = e.target.result;
-            let transactions;
-
+            let workbook;
             if (file.name.toLowerCase().endsWith('.csv')) {
-                const workbook = XLSX.read(data, {type: 'string', FS: ','});
-                transactions = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1});
+                workbook = XLSX.read(data, {type: 'string', FS: ','});
             } else {
-                const workbook = XLSX.read(data, {type: 'binary'});
-                const sheetName = workbook.SheetNames[0];
-                if (!sheetName) {
-                    alert('No sheets found in the .xlsx file.');
-                    return;
+                workbook = XLSX.read(data, {type: 'binary'});
+            }
+            const sheetName = workbook.SheetNames[0];
+            if (!sheetName) {
+                alert('No sheets found in the file.');
+                return;
+            }
+            const worksheet = workbook.Sheets[sheetName];
+            const transactions = XLSX.utils.sheet_to_json(worksheet);
+
+            if (!transactions.length) {
+                alert('The file is empty or invalid.');
+                return;
+            }
+
+            // Define income categories
+            const incomeCategories = [
+                'Joe Paycheck',
+                'Tax Return',
+                'Gifts (Income) (Joint)',
+                'Gambling (Income)'
+            ];
+
+            // Reset global variables
+            totalIncome = 0;
+            const expenseTransactions = [];
+
+            // Process each transaction
+            transactions.forEach(transaction => {
+                const category = transaction['Category'];
+                const amount = parseFloat(transaction['Amount']) || 0;
+                if (incomeCategories.includes(category)) {
+                    totalIncome += amount;
+                } else {
+                    const cleanedCategory = cleanCategory(category);
+                    let adjustedAmount = amount;
+                    if (transaction['Account'] === 'Joint') {
+                        adjustedAmount /= 2;
+                    }
+                    const mappedCategory = categorizeTransaction(cleanedCategory);
+                    expenseTransactions.push({
+                        originalCategory: category,
+                        adjustedAmount: adjustedAmount,
+                        category: mappedCategory
+                    });
                 }
-                const worksheet = workbook.Sheets[sheetName];
-                transactions = XLSX.utils.sheet_to_json(worksheet, {header: 1});
-            }
+            });
 
-            if (!transactions || transactions.length === 0) {
-                alert('The file is empty or contains no valid data.');
-                return;
-            }
-
-            const headers = transactions[0];
-            const descIndex = headers.indexOf('description');
-            const amountIndex = headers.indexOf('amount');
-            if (descIndex === -1 || amountIndex === -1) {
-                alert('File must have "description" and "amount" columns.');
-                return;
-            }
-
-            allTransactions = transactions.slice(1).map(row => ({
-                description: row[descIndex],
-                amount: parseFloat(row[amountIndex]) || 0,
-                category: categorizeTransaction(row[descIndex])
-            }));
+            allTransactions = expenseTransactions;
             displayTransactions(allTransactions);
-
             document.getElementById('calculate').style.display = 'block';
         } catch (error) {
             console.error('Error parsing file:', error);
-            alert('Error processing file. Check the console for details.');
+            alert('Error processing file. See console for details.');
         }
     };
 
@@ -63,8 +83,9 @@ document.getElementById('process').addEventListener('click', function() {
     }
 });
 
+// Calculate and display totals
 document.getElementById('calculate').addEventListener('click', function() {
-    // Update categories based on dropdowns
+    // Update categories from dropdowns
     allTransactions.forEach((txn, index) => {
         const select = document.getElementById(`category-${index}`);
         if (select) {
@@ -73,47 +94,41 @@ document.getElementById('calculate').addEventListener('click', function() {
     });
 
     // Calculate totals
-    let totalNeeds = 0, totalWants = 0, totalSavings = 0, totalUncategorized = 0, total = 0;
+    let totalNeeds = 0, totalWants = 0, totalSavings = 0, totalUncategorized = 0;
     allTransactions.forEach(txn => {
-        if (txn.category === 'needs') totalNeeds += txn.amount;
-        else if (txn.category === 'wants') totalWants += txn.amount;
-        else if (txn.category === 'savings') totalSavings += txn.amount;
-        else totalUncategorized += txn.amount;
-        total += txn.amount;
+        if (txn.category === 'needs') totalNeeds += txn.adjustedAmount;
+        else if (txn.category === 'wants') totalWants += txn.adjustedAmount;
+        else if (txn.category === 'savings') totalSavings += txn.adjustedAmount;
+        else totalUncategorized += txn.adjustedAmount;
     });
 
-    // Calculate percentages
-    const needsPercent = total ? (totalNeeds / total) * 100 : 0;
-    const wantsPercent = total ? (totalWants / total) * 100 : 0;
-    const savingsPercent = total ? (totalSavings / total) * 100 : 0;
-    const uncategorizedPercent = total ? (totalUncategorized / total) * 100 : 0;
+    // Calculate percentages relative to income
+    const needsPercent = totalIncome > 0 ? (totalNeeds / totalIncome * 100) : 0;
+    const wantsPercent = totalIncome > 0 ? (totalWants / totalIncome * 100) : 0;
+    const savingsPercent = totalIncome > 0 ? (totalSavings / totalIncome * 100) : 0;
+    const uncategorizedPercent = totalIncome > 0 ? (totalUncategorized / totalIncome * 100) : 0;
 
-    // Display text results
+    // Display totals
     document.getElementById('totals-text').innerHTML = `
+        <h2>Total Income: $${totalIncome.toFixed(2)}</h2>
         <h2>Your Spending Breakdown</h2>
-        <p><strong>Needs:</strong> $${totalNeeds.toFixed(2)} (${needsPercent.toFixed(2)}%)</p>
-        <p><strong>Wants:</strong> $${totalWants.toFixed(2)} (${wantsPercent.toFixed(2)}%)</p>
-        <p><strong>Savings:</strong> $${totalSavings.toFixed(2)} (${savingsPercent.toFixed(2)}%)</p>
-        <p><strong>Uncategorized:</strong> $${totalUncategorized.toFixed(2)} (${uncategorizedPercent.toFixed(2)}%)</p>
+        <p><strong>Needs:</strong> $${totalNeeds.toFixed(2)} (${needsPercent.toFixed(2)}% of income)</p>
+        <p><strong>Wants:</strong> $${totalWants.toFixed(2)} (${wantsPercent.toFixed(2)}% of income)</p>
+        <p><strong>Savings/Debt Repayment:</strong> $${totalSavings.toFixed(2)} (${savingsPercent.toFixed(2)}% of income)</p>
+        <p><strong>Uncategorized:</strong> $${totalUncategorized.toFixed(2)} (${uncategorizedPercent.toFixed(2)}% of income)</p>
         <h2>50/30/20 Comparison</h2>
         <p>Needs: ${needsPercent.toFixed(2)}% (Target: 50%)</p>
         <p>Wants: ${wantsPercent.toFixed(2)}% (Target: 30%)</p>
-        <p>Savings: ${savingsPercent.toFixed(2)}% (Target: 20%)</p>
+        <p>Savings/Debt Repayment: ${savingsPercent.toFixed(2)}% (Target: 20%)</p>
     `;
 
-    // Update or create pie chart
-    if (budgetChart) {
-        budgetChart.destroy();
-    }
+    // Update pie chart
+    if (budgetChart) budgetChart.destroy();
     const canvas = document.getElementById('budgetChart');
-    if (!canvas) {
-        console.error('Canvas element not found');
-        return;
-    }
     budgetChart = new Chart(canvas, {
         type: 'pie',
         data: {
-            labels: ['Needs', 'Wants', 'Savings', 'Uncategorized'],
+            labels: ['Needs', 'Wants', 'Savings/Debt Repayment', 'Uncategorized'],
             datasets: [{
                 data: [needsPercent, wantsPercent, savingsPercent, uncategorizedPercent],
                 backgroundColor: ['#36A2EB', '#FFCE56', '#4BC0C0', '#FF6384'],
@@ -125,62 +140,34 @@ document.getElementById('calculate').addEventListener('click', function() {
             responsive: true,
             plugins: {
                 legend: { position: 'top' },
-                title: { display: true, text: 'Spending Breakdown' }
+                title: { display: true, text: 'Spending Breakdown (% of Income)' }
             }
         }
     });
 });
 
-// Categorize transactions based on description
-function categorizeTransaction(description) {
-    if (!description) return 'uncategorized';
-    description = description.toLowerCase();
+// Clean category names by removing suffixes
+function cleanCategory(category) {
+    const match = category.match(/^(.*?)\s*\(/);
+    return match ? match[1].trim().toLowerCase() : category.trim().toLowerCase();
+}
 
-    // Needs
-    if (description.includes('mortgage') || 
-        description.includes('hoa') || 
-        description.includes('pse&g') || 
-        description.includes('water bill') || 
-        description.includes('student loan') || 
-        description.includes('car payment') || 
-        description.includes('car maintenance') || 
-        description.includes('gas') || 
-        description.includes('grocer') || 
-        description.includes('home improvement') || 
-        description.includes('healthcare') || 
-        description.includes('petcare') || 
-        description.includes('haircut') || 
-        description.includes('insurance')) {
-        return 'needs';
-    }
+// Categorize transactions based on keywords
+function categorizeTransaction(cleanedCategory) {
+    const needsKeywords = [
+        'mortgage', 'hoa', 'pse&g', 'water bill', 'gas', 'groceries',
+        'healthcare', 'petcare', 'haircut', 'insurance', 'car maintenance'
+    ];
+    const wantsKeywords = [
+        'eating out', 'gift', 'golf', 'shopping', 'xfinity', 'entertainment',
+        'gambling', 'alcohol', 'travel', 'video game', 'sporting event',
+        'vacation', 'activit', 'book', 'subscription', 'hobbies'
+    ];
+    const savingsKeywords = ['student loan', 'car payment'];
 
-    // Wants
-    if (description.includes('eating out') || 
-        description.includes('gift') || 
-        description.includes('golf') || 
-        description.includes('shop') || 
-        description.includes('xfinity') || 
-        description.includes('entertainment') || 
-        description.includes('gambling') || 
-        description.includes('alcohol') || 
-        description.includes('travel') || 
-        description.includes('video game') || 
-        description.includes('sporting event') || 
-        description.includes('vacation') || 
-        description.includes('activit') || 
-        description.includes('book') || 
-        description.includes('subscription')) {
-        return 'wants';
-    }
-
-    // Savings
-    if (description.includes('joe paycheck') || 
-        description.includes('tax return') || 
-        description.includes('favor') || 
-        description.includes('selling item')) {
-        return 'savings';
-    }
-
+    if (needsKeywords.some(keyword => cleanedCategory.includes(keyword))) return 'needs';
+    if (wantsKeywords.some(keyword => cleanedCategory.includes(keyword))) return 'wants';
+    if (savingsKeywords.some(keyword => cleanedCategory.includes(keyword))) return 'savings';
     return 'uncategorized';
 }
 
@@ -191,13 +178,13 @@ function displayTransactions(transactions) {
     transactions.forEach((txn, index) => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${txn.description}</td>
-            <td>$${txn.amount.toFixed(2)}</td>
+            <td>${txn.originalCategory}</td>
+            <td>$${ txn.adjustedAmount.toFixed(2)}</td>
             <td>
                 <select id="category-${index}">
                     <option value="needs" ${txn.category === 'needs' ? 'selected' : ''}>Needs</option>
                     <option value="wants" ${txn.category === 'wants' ? 'selected' : ''}>Wants</option>
-                    <option value="savings" ${txn.category === 'savings' ? 'selected' : ''}>Savings</option>
+                    <option value="savings" ${txn.category === 'savings' ? 'selected' : ''}>Savings/Debt Repayment</option>
                     <option value="uncategorized" ${txn.category === 'uncategorized' ? 'selected' : ''}>Uncategorized</option>
                 </select>
             </td>
