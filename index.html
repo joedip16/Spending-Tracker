@@ -8,8 +8,8 @@
 </head>
 <body>
     <h1>50/30/20 Budget Tracker</h1>
-    <p>Upload an Excel file with "description" and "amount" columns.</p>
-    <input type="file" id="upload" accept=".xlsx, .xls">
+    <p>Upload a Google Sheets file (exported as .xlsx or .csv) with "description" and "amount" columns.</p>
+    <input type="file" id="upload" accept=".xlsx, .csv">
     <button id="process">Process Transactions</button>
     <table id="transactions">
         <thead>
@@ -23,6 +23,7 @@
             <!-- Transactions will be added here by JavaScript -->
         </tbody>
     </table>
+    <button id="calculate" style="display: none;">Calculate Totals</button>
     <div id="totals">
         <!-- Totals will appear here -->
     </div>
