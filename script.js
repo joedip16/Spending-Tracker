@@ -1,4 +1,5 @@
-let allTransactions = []; // Store transactions globally
+let allTransactions = [];
+let budgetChart = null;
 
 document.getElementById('process').addEventListener('click', function() {
     const fileInput = document.getElementById('upload');
@@ -14,13 +15,10 @@ document.getElementById('process').addEventListener('click', function() {
             const data = e.target.result;
             let transactions;
 
-            // Determine file type and parse accordingly
             if (file.name.toLowerCase().endsWith('.csv')) {
-                // Parse CSV
                 const workbook = XLSX.read(data, {type: 'string', FS: ','});
                 transactions = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1});
             } else {
-                // Parse XLSX
                 const workbook = XLSX.read(data, {type: 'binary'});
                 const sheetName = workbook.SheetNames[0];
                 if (!sheetName) {
@@ -31,13 +29,11 @@ document.getElementById('process').addEventListener('click', function() {
                 transactions = XLSX.utils.sheet_to_json(worksheet, {header: 1});
             }
 
-            // Check if transactions is empty
             if (!transactions || transactions.length === 0) {
                 alert('The file is empty or contains no valid data.');
                 return;
             }
 
-            // Check for required columns
             const headers = transactions[0];
             const descIndex = headers.indexOf('description');
             const amountIndex = headers.indexOf('amount');
@@ -46,7 +42,6 @@ document.getElementById('process').addEventListener('click', function() {
                 return;
             }
 
-            // Parse transactions
             allTransactions = transactions.slice(1).map(row => ({
                 description: row[descIndex],
                 amount: parseFloat(row[amountIndex]) || 0,
@@ -54,7 +49,6 @@ document.getElementById('process').addEventListener('click', function() {
             }));
             displayTransactions(allTransactions);
 
-            // Show the calculate button
             document.getElementById('calculate').style.display = 'block';
         } catch (error) {
             console.error('Error parsing file:', error);
@@ -62,7 +56,6 @@ document.getElementById('process').addEventListener('click', function() {
         }
     };
 
-    // Read file as binary for .xlsx, string for .csv
     if (file.name.toLowerCase().endsWith('.csv')) {
         reader.readAsText(file);
     } else {
@@ -70,7 +63,6 @@ document.getElementById('process').addEventListener('click', function() {
     }
 });
 
-// Calculate totals when button is clicked
 document.getElementById('calculate').addEventListener('click', function() {
     // Update categories based on dropdowns
     allTransactions.forEach((txn, index) => {
@@ -81,11 +73,12 @@ document.getElementById('calculate').addEventListener('click', function() {
     });
 
     // Calculate totals
-    let totalNeeds = 0, totalWants = 0, totalSavings = 0, total = 0;
+    let totalNeeds = 0, totalWants = 0, totalSavings = 0, totalUncategorized = 0, total = 0;
     allTransactions.forEach(txn => {
         if (txn.category === 'needs') totalNeeds += txn.amount;
         else if (txn.category === 'wants') totalWants += txn.amount;
         else if (txn.category === 'savings') totalSavings += txn.amount;
+        else totalUncategorized += txn.amount;
         total += txn.amount;
     });
 
@@ -93,35 +86,102 @@ document.getElementById('calculate').addEventListener('click', function() {
     const needsPercent = total ? (totalNeeds / total) * 100 : 0;
     const wantsPercent = total ? (totalWants / total) * 100 : 0;
     const savingsPercent = total ? (totalSavings / total) * 100 : 0;
+    const uncategorizedPercent = total ? (totalUncategorized / total) * 100 : 0;
 
-    // Display results
-    document.getElementById('totals').innerHTML = `
+    // Display text results
+    document.getElementById('totals-text').innerHTML = `
         <h2>Your Spending Breakdown</h2>
         <p><strong>Needs:</strong> $${totalNeeds.toFixed(2)} (${needsPercent.toFixed(2)}%)</p>
         <p><strong>Wants:</strong> $${totalWants.toFixed(2)} (${wantsPercent.toFixed(2)}%)</p>
         <p><strong>Savings:</strong> $${totalSavings.toFixed(2)} (${savingsPercent.toFixed(2)}%)</p>
+        <p><strong>Uncategorized:</strong> $${totalUncategorized.toFixed(2)} (${uncategorizedPercent.toFixed(2)}%)</p>
         <h2>50/30/20 Comparison</h2>
         <p>Needs: ${needsPercent.toFixed(2)}% (Target: 50%)</p>
         <p>Wants: ${wantsPercent.toFixed(2)}% (Target: 30%)</p>
         <p>Savings: ${savingsPercent.toFixed(2)}% (Target: 20%)</p>
     `;
+
+    // Update or create pie chart
+    if (budgetChart) {
+        budgetChart.destroy();
+    }
+    const canvas = document.getElementById('budgetChart');
+    if (!canvas) {
+        console.error('Canvas element not found');
+        return;
+    }
+    budgetChart = new Chart(canvas, {
+        type: 'pie',
+        data: {
+            labels: ['Needs', 'Wants', 'Savings', 'Uncategorized'],
+            datasets: [{
+                data: [needsPercent, wantsPercent, savingsPercent, uncategorizedPercent],
+                backgroundColor: ['#36A2EB', '#FFCE56', '#4BC0C0', '#FF6384'],
+                borderColor: '#fff',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'top' },
+                title: { display: true, text: 'Spending Breakdown' }
+            }
+        }
+    });
 });
 
 // Categorize transactions based on description
 function categorizeTransaction(description) {
     if (!description) return 'uncategorized';
     description = description.toLowerCase();
-    if (description.includes('mortgage') || description.includes('rent') || 
-        description.includes('utilities') || description.includes('groceries')) {
+
+    // Needs
+    if (description.includes('mortgage') || 
+        description.includes('hoa') || 
+        description.includes('pse&g') || 
+        description.includes('water bill') || 
+        description.includes('student loan') || 
+        description.includes('car payment') || 
+        description.includes('car maintenance') || 
+        description.includes('gas') || 
+        description.includes('grocer') || 
+        description.includes('home improvement') || 
+        description.includes('healthcare') || 
+        description.includes('petcare') || 
+        description.includes('haircut') || 
+        description.includes('insurance')) {
         return 'needs';
-    } else if (description.includes('dining out') || description.includes('entertainment') || 
-               description.includes('shopping')) {
-        return 'wants';
-    } else if (description.includes('savings') || description.includes('investment')) {
-        return 'savings';
-    } else {
-        return 'uncategorized';
     }
+
+    // Wants
+    if (description.includes('eating out') || 
+        description.includes('gift') || 
+        description.includes('golf') || 
+        description.includes('shop') || 
+        description.includes('xfinity') || 
+        description.includes('entertainment') || 
+        description.includes('gambling') || 
+        description.includes('alcohol') || 
+        description.includes('travel') || 
+        description.includes('video game') || 
+        description.includes('sporting event') || 
+        description.includes('vacation') || 
+        description.includes('activit') || 
+        description.includes('book') || 
+        description.includes('subscription')) {
+        return 'wants';
+    }
+
+    // Savings
+    if (description.includes('joe paycheck') || 
+        description.includes('tax return') || 
+        description.includes('favor') || 
+        description.includes('selling item')) {
+        return 'savings';
+    }
+
+    return 'uncategorized';
 }
 
 // Display transactions in the table
