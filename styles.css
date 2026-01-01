@@ -224,3 +224,179 @@ select {
 select:focus {
     outline: 2px solid #3498db;
 }
+
+/* Add this new rule */
+#year-select {
+    padding: 10px 14px;
+    font-size: 1.1em;
+    border-radius: 8px;
+    border: 2px solid #3498db;
+    background: white;
+    min-width: 120px;
+    cursor: pointer;
+}
+
+#year-select:focus {
+    outline: none;
+    border-color: #2980b9;
+    box-shadow: 0 0 8px rgba(52,152,219,0.4);
+}
+
+/* Existing styles remain — just adding new ones */
+
+/* Dark Mode */
+body.dark-mode {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #e0e0e0;
+}
+
+body.dark-mode .container h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode p,
+body.dark-mode label {
+    color: #e0e0e0;
+}
+
+body.dark-mode #upload-section,
+body.dark-mode #manual-form,
+body.dark-mode #totals,
+body.dark-mode table,
+body.dark-mode #results-section h2 {
+    background: #16213e;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+}
+
+body.dark-mode table th {
+    background: #0f3460;
+}
+
+body.dark-mode tr:hover {
+    background-color: #1e2d4e;
+}
+
+body.dark-mode input,
+body.dark-mode select {
+    background: #1e2d4e;
+    color: #e0e0e0;
+    border: 1px solid #34495e;
+}
+
+body.dark-mode button {
+    background: #3498db;
+}
+
+body.dark-mode .progress-bar {
+    background: #34495e;
+}
+
+body.dark-mode .category-group td {
+    background-color: #0f3460 !important;
+}
+
+/* Dark Mode Toggle Button */
+#dark-mode-toggle {
+    background: none;
+    border: none;
+    font-size: 1.8rem;
+    cursor: pointer;
+    padding: 10px;
+    border-radius: 50%;
+    transition: all 0.3s;
+}
+
+#dark-mode-toggle:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+body.dark-mode #dark-mode-toggle {
+    color: #ffd700;
+}
+
+/* Manual Form Inputs */
+#manual-form label {
+    display: block;
+    margin: 10px 0 5px;
+    font-weight: 600;
+}
+
+#manual-form input {
+    width: 100%;
+    max-width: 400px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid #3498db;
+    font-size: 1rem;
+}
+
+#manual-form button {
+    margin: 10px 10px 0 0;
+}
+
+/* Responsive buttons */
+@media (max-width: 768px) {
+    #calculate, #view-toggle, #add-manual-btn {
+        display: block;
+        width: 100%;
+        margin: 10px 0;
+    }
+}
+
+/* Edit Modal */
+#edit-modal input, #edit-modal select {
+    border: 2px solid #3498db;
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+#edit-modal button {
+    padding: 12px 20px;
+    margin: 10px 5px 0 0;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+}
+
+#edit-modal button:hover {
+    opacity: 0.9;
+}
+
+/* Action buttons in table */
+.action-btn {
+    padding: 6px 10px;
+    margin: 0 4px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.edit-btn {
+    background: #3498db;
+    color: white;
+}
+
+.delete-btn {
+    background: #e74c3c;
+    color: white;
+}
+
+#clear-imported:hover {
+    background: #c0392b;
+    transform: translateY(-2px);
+}
+
+#undo-btn, #redo-btn {
+    background: #7f8c8d;
+    font-size: 1.1rem;
+}
+
+#undo-btn:not(:disabled), #redo-btn:not(:disabled) {
+    background: #3498db;
+    cursor: pointer;
+}
+
+#undo-btn:not(:disabled):hover, #redo-btn:not(:disabled):hover {
+    background: #2980b9;
+}

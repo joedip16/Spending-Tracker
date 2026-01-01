@@ -8,22 +8,40 @@
 </head>
 <body>
     <div class="container">
-        <h1>50/30/20 Budget Tracker</h1>
-        <p>Upload your transactions CSV or Excel file with columns: Date, Category/Description, Amount</p>
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>50/30/20 Budget Tracker</h1>
+            <button id="dark-mode-toggle" title="Toggle Dark Mode">🌙</button>
+        </header>
+
+        <p>Upload your transactions CSV/Excel file <strong>or</strong> add/edit them manually below.</p>
 
         <div id="upload-section">
             <input type="file" id="upload" accept=".xlsx, .csv">
             <br><br>
-            <button id="process">Process Transactions</button>
+            <button id="process">Process File</button>
+            <button id="add-manual-btn">Add Transaction Manually</button>
+            <button id="clear-imported" style="background:#e74c3c;">Clear Imported Transactions</button>
+            <button id="undo-btn" disabled>↺ Undo</button>
+            <button id="redo-btn" disabled>↻ Redo</button>
             <div id="loading">
-                <p>Processing your transactions...</p>
+                <p>Processing...</p>
                 <div class="spinner"></div>
             </div>
         </div>
 
+        <!-- Manual Add Form -->
+        <div id="manual-form" style="display:none; background:white; padding:20px; border-radius:12px; margin:20px 0; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
+            <h3>Add New Transaction</h3>
+            <label>Date: <input type="text" id="manual-date" placeholder="MM/DD/YYYY" required></label><br><br>
+            <label>Description: <input type="text" id="manual-desc" placeholder="e.g., Starbucks Coffee" required></label><br><br>
+            <label>Amount: <input type="number" id="manual-amount" step="0.01" placeholder="e.g., -8.50 or 3000.00" required></label><br><br>
+            <button id="save-manual">Save Transaction</button>
+            <button id="cancel-manual">Cancel</button>
+        </div>
+
         <div id="results-section" style="display:none;">
             <h2 style="cursor: pointer;" onclick="toggleTransactions()">
-                Review & Edit Categories <span id="toggle-arrow" style="font-size:1.2em;">▼</span>
+                Review & Edit Transactions <span id="toggle-arrow" style="font-size:1.2em;">▼</span>
             </h2>
             <div id="transactions-container">
                 <div class="table-wrapper">
@@ -34,6 +52,7 @@
                                 <th>Description</th>
                                 <th>Amount</th>
                                 <th>Category</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -42,7 +61,10 @@
             </div>
 
             <div style="text-align:center; margin:30px 0;">
-                <button id="calculate">Calculate Joint Breakdown</button>
+                <label for="year-select" style="font-size:1.1em; margin-right:10px;">Year:</label>
+                <select id="year-select"></select>
+
+                <button id="calculate" style="margin-left:20px;">Calculate Joint Breakdown</button>
                 <button id="view-toggle">Switch to Joe's View</button>
             </div>
 
@@ -56,6 +78,27 @@
             <div style="text-align:center; margin:40px 0;">
                 <button id="export">Export Monthly Breakdown to CSV</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); justify-content:center; align-items:center; z-index:100; flex-direction:column;">
+        <div style="background:white; padding:30px; border-radius:12px; width:90%; max-width:500px; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+            <h3>Edit Transaction</h3>
+            <label>Date: <input type="text" id="edit-date" placeholder="MM/DD/YYYY" style="width:100%; padding:10px; margin:10px 0;"></label><br>
+            <label>Description: <input type="text" id="edit-desc" style="width:100%; padding:10px; margin:10px 0;"></label><br>
+            <label>Amount: <input type="number" id="edit-amount" step="0.01" style="width:100%; padding:10px; margin:10px 0;"></label><br>
+            <label>Category:
+                <select id="edit-category" style="width:100%; padding:10px; margin:10px 0;">
+                    <option value="income">Income</option>
+                    <option value="needs">Needs</option>
+                    <option value="wants">Wants</option>
+                    <option value="uncategorized">Uncategorized</option>
+                </select>
+            </label><br>
+            <button id="save-edit" style="background:#27ae60;">Save Changes</button>
+            <button id="cancel-edit" style="background:#95a5a6; margin-left:10px;">Cancel</button>
+            <button id="delete-txn" style="background:#e74c3c; float:right;">Delete Transaction</button>
         </div>
     </div>
 
