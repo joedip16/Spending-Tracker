@@ -8,28 +8,31 @@
 </head>
 <body>
     <h1>50/30/20 Budget Tracker</h1>
-    <p>Upload a Google Sheets file (exported as .xlsx or .csv) with "description" and "amount" columns.</p>
+    <p>Upload your transactions CSV with "Date", "Category", "Amount", "Account" columns.</p>
     <input type="file" id="upload" accept=".xlsx, .csv">
     <button id="process">Process Transactions</button>
     <table id="transactions">
         <thead>
             <tr>
+                <th>Date</th>
                 <th>Description</th>
                 <th>Amount</th>
                 <th>Category</th>
             </tr>
         </thead>
         <tbody>
-            <!-- Transactions will be added here by JavaScript -->
+            <!-- Transactions will be added here -->
         </tbody>
     </table>
     <button id="calculate" style="display: none;">Calculate Totals</button>
+    <div id="monthly-breakdown">
+        <!-- Monthly table will be added here -->
+    </div>
     <div id="totals">
         <div id="totals-text"></div>
-        <canvas id="budgetChart" style="max-width: 400px; margin-top: 20px;"></canvas>
     </div>
+    <button id="export" style="display: none;">Export Monthly Breakdown to CSV</button>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
