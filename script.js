@@ -27,7 +27,7 @@ function formatMoney(value) {
     return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Categorization function
+// Categorization function (unchanged)
 function categorizeTransaction(cleanedCategory, originalCategory, amount) {
     const originalLower = originalCategory.toLowerCase();
     const cleanedLower = cleanedCategory.toLowerCase();
@@ -104,6 +104,19 @@ function displayTransactions() {
     });
 }
 
+// Toggle transactions visibility
+function toggleTransactions() {
+    const container = document.getElementById('transactions-container');
+    const arrow = document.getElementById('toggle-arrow');
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        arrow.textContent = '▼';
+    } else {
+        container.style.display = 'none';
+        arrow.textContent = '▲';
+    }
+}
+
 // Process Transactions button
 document.getElementById('process').addEventListener('click', function() {
     const fileInput = document.getElementById('upload');
@@ -112,6 +125,8 @@ document.getElementById('process').addEventListener('click', function() {
         alert('Please upload a file (.xlsx or .csv).');
         return;
     }
+
+    document.getElementById('loading').style.display = 'block';
 
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -180,45 +195,23 @@ document.getElementById('process').addEventListener('click', function() {
                 throw new Error('No valid transactions found.');
             }
 
-            let resultsSection = document.getElementById('results-section');
-            if (!resultsSection) {
-                resultsSection = document.createElement('div');
-                resultsSection.id = 'results-section';
-                document.body.appendChild(resultsSection);
-            }
-            resultsSection.innerHTML = '';
-
-            resultsSection.innerHTML += `
-                <h2>Edit Categories (if needed)</h2>
-                <table id="transactions">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Description</th>
-                            <th>Amount</th>
-                            <th>Category</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-                <button id="calculate">Calculate Totals (Joint View)</button>
-                <button id="view-toggle">Joe's point of view</button>
-                <button id="export" style="display:none;">Export Monthly Breakdown to CSV</button>
-                <div id="monthly-breakdown"></div>
-            `;
+            // Show results
+            document.getElementById('results-section').style.display = 'block';
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('transactions-container').style.display = 'block';
+            document.getElementById('toggle-arrow').textContent = '▼';
 
             displayTransactions();
 
-            attachCalculateListener();
-            attachViewToggleListener();
+            // Reset buttons
+            document.getElementById('calculate').textContent = 'Calculate Joint Breakdown';
+            document.getElementById('view-toggle').textContent = 'Switch to Joe\'s View';
 
-            document.getElementById('calculate').style.display = 'block';
-            document.getElementById('view-toggle').style.display = 'block';
-
-            resultsSection.scrollIntoView({ behavior: 'smooth' });
+            document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
 
         } catch (err) {
             console.error(err);
+            document.getElementById('loading').style.display = 'none';
             alert('Error: ' + err.message);
         }
     };
@@ -230,7 +223,7 @@ document.getElementById('process').addEventListener('click', function() {
     }
 });
 
-// Calculate Totals — always joint view
+// Calculate button
 function attachCalculateListener() {
     const calculateBtn = document.getElementById('calculate');
     if (calculateBtn) {
@@ -240,20 +233,21 @@ function attachCalculateListener() {
     }
 }
 
-// Toggle between Joe and Joint view
+// View toggle
 function attachViewToggleListener() {
     const toggleBtn = document.getElementById('view-toggle');
     if (toggleBtn) {
         toggleBtn.onclick = function() {
-            const isCurrentlyJoe = toggleBtn.textContent === "Joint point of view";
+            const isCurrentlyJoe = toggleBtn.textContent.includes("Joe");
             calculateBreakdown(!isCurrentlyJoe);
 
-            toggleBtn.textContent = isCurrentlyJoe ? "Joe's point of view" : "Joint point of view";
+            toggleBtn.textContent = isCurrentlyJoe ? "Switch to Joe's View" : "Switch to Joint View";
+            document.getElementById('calculate').textContent = isCurrentlyJoe ? 'Calculate Joint Breakdown' : 'Calculate Joe\'s Breakdown';
         };
     }
 }
 
-// Main calculation function
+// Main calculation
 function calculateBreakdown(isJoeView = false) {
     allTransactions.forEach((txn, i) => {
         const select = document.getElementById(`category-${i}`);
@@ -377,6 +371,8 @@ function calculateBreakdown(isJoeView = false) {
     const avgNeeds = totalNeeds / numMonths;
     const avgWants = totalWants / numMonths;
     const avgNetPercent = avgIncome > 0 ? ((avgIncome - (avgNeeds + avgWants)) / avgIncome * 100) : 0;
+    const avgNeedsPct = avgIncome > 0 ? (avgNeeds / avgIncome * 100) : 0;
+    const avgWantsPct = avgIncome > 0 ? (avgWants / avgIncome * 100) : 0;
 
     function colorPercent(value, threshold, goodBelow = true) {
         if (value === 0) return value.toFixed(1);
@@ -386,7 +382,7 @@ function calculateBreakdown(isJoeView = false) {
 
     const title = isJoeView ? "Joe's Monthly Breakdown" : "Joint Monthly Breakdown";
 
-    let tableHTML = `<h2>${title}</h2><table><thead><tr><th>Category</th>`;
+    let tableHTML = `<h2>${title}</h2><div class="table-wrapper"><table><thead><tr><th>Category</th>`;
     months.forEach(m => tableHTML += `<th>${m}</th>`);
     tableHTML += '<th>Average</th><th>Total</th></tr></thead><tbody>';
 
@@ -413,7 +409,6 @@ function calculateBreakdown(isJoeView = false) {
         const pct = monthlyData[m].needsPercent;
         tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(pct, 50, true)})</td>`;
     });
-    const avgNeedsPct = avgIncome > 0 ? (avgNeeds / avgIncome * 100) : 0;
     tableHTML += `<td>$${formatMoney(avgNeeds)} (${colorPercent(avgNeedsPct, 50, true)})</td><td>$${formatMoney(totalNeeds)}</td></tr>`;
 
     addGroup('Wants');
@@ -425,10 +420,9 @@ function calculateBreakdown(isJoeView = false) {
     tableHTML += `<tr class="category-group"><td>Total Wants</td>`;
     months.forEach(m => {
         const pct = monthlyData[m].wantsPercent;
-        tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${pct.toFixed(1)}%)</td>`;
+        tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(pct, 30, true)})</td>`;
     });
-    const avgWantsPct = avgIncome > 0 ? (avgWants / avgIncome * 100) : 0;
-    tableHTML += `<td>$${formatMoney(avgWants)} (${avgWantsPct.toFixed(1)}%)</td><td>$${formatMoney(totalWants)}</td></tr>`;
+    tableHTML += `<td>$${formatMoney(avgWants)} (${colorPercent(avgWantsPct, 30, true)})</td><td>$${formatMoney(totalWants)}</td></tr>`;
 
     tableHTML += `<tr class="category-group"><td>Total Expenses</td>`;
     months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].expenses)}</td>`);
@@ -441,19 +435,66 @@ function calculateBreakdown(isJoeView = false) {
     });
     tableHTML += `<td>$${formatMoney(avgIncome - (avgNeeds + avgWants))} (${colorPercent(avgNetPercent, 20, false)})</td><td>$${formatMoney(totalIncome - totalExpenses)}</td></tr>`;
 
-    tableHTML += '</tbody></table>';
+    tableHTML += '</tbody></table></div>';
     document.getElementById('monthly-breakdown').innerHTML = tableHTML;
 
+    // Progress bars
+    const totalsText = document.getElementById('totals-text');
+    totalsText.innerHTML = `
+        <div class="progress-container">
+            <div class="progress-label">
+                <span>Needs (target ≤50%)</span>
+                <span>${avgNeedsPct.toFixed(1)}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill needs" style="width: ${Math.min(avgNeedsPct, 100)}%">
+                    ${avgNeedsPct.toFixed(1)}%
+                </div>
+            </div>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-label">
+                <span>Wants (target ≤30%)</span>
+                <span>${avgWantsPct.toFixed(1)}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill wants" style="width: ${Math.min(avgWantsPct, 100)}%">
+                    ${avgWantsPct.toFixed(1)}%
+                </div>
+            </div>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-label">
+                <span>Savings / Debt Paydown (target ≥20%)</span>
+                <span>${avgNetPercent.toFixed(1)}%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill savings" style="width: ${Math.min(Math.max(avgNetPercent, 0), 100)}%">
+                    ${avgNetPercent.toFixed(1)}%
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Final UI updates
     document.getElementById('export').style.display = 'block';
+
+    // Collapse transactions and scroll to breakdown
+    document.getElementById('transactions-container').style.display = 'none';
+    document.getElementById('toggle-arrow').textContent = '▲';
+
+    document.getElementById('monthly-breakdown').scrollIntoView({ behavior: 'smooth' });
 }
 
-// Attach listeners on load
+// Attach listeners
 window.addEventListener('load', () => {
     attachCalculateListener();
     attachViewToggleListener();
 });
 
-// Export button
+// Export
 document.getElementById('export').addEventListener('click', function() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const rows = [['Month','Income','Needs','Wants','Expenses','Net Income','Needs %','Wants %','Net %']];

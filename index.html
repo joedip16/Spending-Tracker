@@ -7,31 +7,58 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>50/30/20 Budget Tracker</h1>
-    <p>Upload your transactions CSV with "Date", "Category", "Amount", "Account" columns.</p>
-    <input type="file" id="upload" accept=".xlsx, .csv">
-    <button id="process">Process Transactions</button>
-    <table id="transactions">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Description</th>
-                <th>Amount</th>
-                <th>Category</th>
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Transactions will be added here -->
-        </tbody>
-    </table>
-    <button id="calculate" style="display: none;">Calculate Totals</button>
-    <div id="monthly-breakdown">
-        <!-- Monthly table will be added here -->
+    <div class="container">
+        <h1>50/30/20 Budget Tracker</h1>
+        <p>Upload your transactions CSV or Excel file with columns: Date, Category/Description, Amount</p>
+
+        <div id="upload-section">
+            <input type="file" id="upload" accept=".xlsx, .csv">
+            <br><br>
+            <button id="process">Process Transactions</button>
+            <div id="loading">
+                <p>Processing your transactions...</p>
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <div id="results-section" style="display:none;">
+            <h2 style="cursor: pointer;" onclick="toggleTransactions()">
+                Review & Edit Categories <span id="toggle-arrow" style="font-size:1.2em;">▼</span>
+            </h2>
+            <div id="transactions-container">
+                <div class="table-wrapper">
+                    <table id="transactions">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Amount</th>
+                                <th>Category</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="text-align:center; margin:30px 0;">
+                <button id="calculate">Calculate Joint Breakdown</button>
+                <button id="view-toggle">Switch to Joe's View</button>
+            </div>
+
+            <div id="monthly-breakdown"></div>
+
+            <div id="totals">
+                <h2>50/30/20 Summary (Average)</h2>
+                <div id="totals-text"></div>
+            </div>
+
+            <div style="text-align:center; margin:40px 0;">
+                <button id="export">Export Monthly Breakdown to CSV</button>
+            </div>
+        </div>
     </div>
-    <div id="totals">
-        <div id="totals-text"></div>
-    </div>
-    <button id="export" style="display: none;">Export Monthly Breakdown to CSV</button>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="script.js"></script>
 </body>
