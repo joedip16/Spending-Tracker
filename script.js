@@ -9,6 +9,8 @@ let numMonths = 0;
 let availableYears = [];
 let currentYear = null;
 let editingIndex = null;
+let isJoeViewActive = false;
+let hasCalculatedBreakdown = false;
 
 // History for undo/redo
 let history = [];
@@ -47,9 +49,8 @@ function redo() {
 function restoreState(state) {
     importedTransactions = state.imported;
     manualTransactions = state.manual;
-    allTransactions = [...importedTransactions, ...manualTransactions];
-    displayTransactions();
-    populateYearSelector();
+    saveAllTransactions();
+    updateTransactions();
 }
 
 function updateUndoRedoButtons() {
@@ -73,13 +74,7 @@ function loadPersistedData() {
         document.getElementById('dark-mode-toggle').textContent = '☀️';
     }
 
-    if (allTransactions.length > 0) {
-        document.getElementById('results-section').style.display = 'block';
-        document.getElementById('transactions-container').style.display = 'block';
-        document.getElementById('toggle-arrow').textContent = '▼';
-        displayTransactions();
-        populateYearSelector();
-    }
+    if (allTransactions.length > 0) updateTransactions();
 
     // Save initial state for undo
     saveState("Page load");
@@ -91,11 +86,148 @@ function saveAllTransactions() {
     localStorage.setItem('manualTransactions', JSON.stringify(manualTransactions));
 }
 
+function deriveAvailableYears() {
+    const yearSet = new Set();
+
+    allTransactions.forEach(txn => {
+        const match = String(txn.date || '').match(/^\d{1,2}\/\d{1,2}\/(\d{4})$/);
+        if (match) yearSet.add(parseInt(match[1], 10));
+    });
+
+    availableYears = Array.from(yearSet).sort((a, b) => b - a);
+}
+
+function syncResultsVisibility() {
+    const hasTransactions = allTransactions.length > 0;
+    document.getElementById('results-section').style.display = hasTransactions ? 'block' : 'none';
+
+    if (!hasTransactions) {
+        document.getElementById('transactions-container').style.display = 'none';
+        document.getElementById('toggle-arrow').textContent = '▼';
+        currentYear = null;
+        resetCalculatedOutput();
+    }
+}
+
+function refreshCalculatedView() {
+    if (hasCalculatedBreakdown && currentYear !== null) {
+        calculateBreakdown(isJoeViewActive);
+    }
+}
+
+function resetCalculatedOutput() {
+    document.getElementById('monthly-breakdown').innerHTML = '';
+    document.getElementById('totals-text').innerHTML = '';
+    document.getElementById('export').style.display = 'none';
+    hasCalculatedBreakdown = false;
+}
+
+function resetManualForm() {
+    document.getElementById('manual-form').style.display = 'none';
+    document.getElementById('manual-date').value = '';
+    document.getElementById('manual-desc').value = '';
+    document.getElementById('manual-amount').value = '';
+    document.getElementById('manual-category').value = 'income';
+}
+
 // Rebuild allTransactions and refresh UI
 function updateTransactions() {
-    allTransactions = [...importedTransactions, ...manualTransactions];
+    allTransactions = [...importedTransactions, ...manualTransactions].sort(compareTransactions);
+    deriveAvailableYears();
+    syncResultsVisibility();
+
+    if (!allTransactions.length) return;
+
+    document.getElementById('transactions-container').style.display = 'block';
+    document.getElementById('toggle-arrow').textContent = '▼';
     displayTransactions();
     populateYearSelector();
+    refreshCalculatedView();
+}
+
+function parseTransactionDate(dateString) {
+    const match = String(dateString || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return null;
+
+    const month = parseInt(match[1], 10) - 1;
+    const day = parseInt(match[2], 10);
+    const year = parseInt(match[3], 10);
+    return new Date(year, month, day);
+}
+
+function formatDateForStorage(dateInputValue) {
+    const match = String(dateInputValue || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return '';
+
+    return `${match[2]}/${match[3]}/${match[1]}`;
+}
+
+function formatDateForInput(storedDateValue) {
+    const match = String(storedDateValue || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return '';
+
+    const month = match[1].padStart(2, '0');
+    const day = match[2].padStart(2, '0');
+    return `${match[3]}-${month}-${day}`;
+}
+
+function getTodayInputValue() {
+    const today = new Date();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const year = today.getFullYear();
+    return `${year}-${month}-${day}`;
+}
+
+function openNativeDatePicker(input) {
+    if (!input) return;
+
+    input.focus();
+    if (typeof input.showPicker === 'function') {
+        try {
+            input.showPicker();
+        } catch (error) {
+            // Some browsers only allow this during a direct user gesture.
+        }
+    }
+}
+
+function compareTransactions(a, b) {
+    const dateA = parseTransactionDate(a.date);
+    const dateB = parseTransactionDate(b.date);
+
+    if (dateA && dateB && dateA.getTime() !== dateB.getTime()) {
+        return dateB - dateA;
+    }
+
+    return String(a.originalCategory || '').localeCompare(String(b.originalCategory || ''));
+}
+
+function getAmountDisplay(amount) {
+    if (amount > 0) {
+        return { text: `+$${formatMoney(amount)}`, className: 'amount-income' };
+    }
+
+    if (amount < 0) {
+        return { text: `-$${formatMoney(Math.abs(amount))}`, className: 'amount-expense' };
+    }
+
+    return { text: '$0.00', className: 'amount-zero' };
+}
+
+function updateTransactionMeta() {
+    const meta = document.getElementById('transaction-meta');
+    if (!meta) return;
+
+    const totalCount = allTransactions.length;
+    const uncategorizedCount = allTransactions.filter(txn => txn.category === 'uncategorized').length;
+
+    meta.innerHTML = [
+        `<span class="meta-pill">${totalCount} transaction${totalCount === 1 ? '' : 's'}</span>`,
+        `<span class="meta-pill">${importedTransactions.length} imported</span>`,
+        `<span class="meta-pill">${manualTransactions.length} manual</span>`,
+        `<span class="meta-pill">${uncategorizedCount} uncategorized</span>`
+    ].join('');
 }
 
 // Excel date conversion
@@ -116,7 +248,7 @@ function formatMoney(value) {
     return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Categorization
+// Categorization (still used for imported files)
 function categorizeTransaction(cleanedCategory, originalCategory, amount) {
     const originalLower = originalCategory.toLowerCase();
     const cleanedLower = cleanedCategory.toLowerCase();
@@ -158,12 +290,20 @@ function displayTransactions() {
     const tbody = document.querySelector('#transactions tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
+
+    if (allTransactions.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No transactions yet. Import a file or add one manually to get started.</td></tr>';
+        updateTransactionMeta();
+        return;
+    }
+
     allTransactions.forEach((txn, i) => {
+        const amountDisplay = getAmountDisplay(txn.adjustedAmount);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${txn.date}</td>
             <td>${txn.originalCategory}</td>
-            <td>$${formatMoney(Math.abs(txn.adjustedAmount))}</td>
+            <td class="${amountDisplay.className}">${amountDisplay.text}</td>
             <td>${txn.category.charAt(0).toUpperCase() + txn.category.slice(1)}</td>
             <td>
                 <button class="action-btn edit-btn" data-index="${i}">Edit</button>
@@ -179,13 +319,15 @@ function displayTransactions() {
     document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', () => deleteTransaction(parseInt(btn.dataset.index)));
     });
+
+    updateTransactionMeta();
 }
 
 // Edit modal
 function openEditModal(index) {
     editingIndex = index;
     const txn = allTransactions[index];
-    document.getElementById('edit-date').value = txn.date;
+    document.getElementById('edit-date').value = formatDateForInput(txn.date);
     document.getElementById('edit-desc').value = txn.originalCategory;
     document.getElementById('edit-amount').value = txn.adjustedAmount;
     document.getElementById('edit-category').value = txn.category;
@@ -216,17 +358,13 @@ function deleteTransaction(index) {
 
 // Save edit
 document.getElementById('save-edit').addEventListener('click', () => {
-    const date = document.getElementById('edit-date').value.trim();
+    const date = formatDateForStorage(document.getElementById('edit-date').value);
     const desc = document.getElementById('edit-desc').value.trim();
     const amount = parseFloat(document.getElementById('edit-amount').value);
     const category = document.getElementById('edit-category').value;
 
     if (!date || !desc || isNaN(amount)) {
         alert('Please fill all fields correctly.');
-        return;
-    }
-    if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
-        alert('Date must be MM/DD/YYYY');
         return;
     }
 
@@ -264,6 +402,21 @@ document.getElementById('delete-txn').addEventListener('click', () => {
     }
 });
 
+['manual-date', 'edit-date'].forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
+
+    input.addEventListener('click', () => openNativeDatePicker(input));
+    input.addEventListener('focus', () => openNativeDatePicker(input));
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        document.getElementById('edit-modal').style.display = 'none';
+        resetManualForm();
+    }
+});
+
 // Toggle transactions
 function toggleTransactions() {
     const container = document.getElementById('transactions-container');
@@ -281,9 +434,13 @@ function toggleTransactions() {
 function populateYearSelector() {
     const select = document.getElementById('year-select');
     select.innerHTML = '';
-    if (availableYears.length === 0) return;
+    select.onchange = null;
 
-    availableYears.sort((a, b) => b - a);
+    if (availableYears.length === 0) {
+        currentYear = null;
+        return;
+    }
+
     availableYears.forEach(year => {
         const option = document.createElement('option');
         option.value = year;
@@ -291,14 +448,13 @@ function populateYearSelector() {
         select.appendChild(option);
     });
 
-    select.value = availableYears[0];
-    currentYear = availableYears[0];
+    currentYear = availableYears.includes(currentYear) ? currentYear : availableYears[0];
+    select.value = String(currentYear);
 
-    select.addEventListener('change', () => {
-        currentYear = parseInt(select.value);
-        const isJoeView = document.getElementById('view-toggle').textContent.includes("Joe");
-        calculateBreakdown(isJoeView);
-    });
+    select.onchange = () => {
+        currentYear = parseInt(select.value, 10);
+        calculateBreakdown(isJoeViewActive);
+    };
 }
 
 // Dark mode
@@ -309,29 +465,41 @@ document.getElementById('dark-mode-toggle').addEventListener('click', () => {
     localStorage.setItem('darkMode', isDark);
 });
 
-// Manual add
-document.getElementById('add-manual-btn').addEventListener('click', () => {
+// ───────────────────────────────────────────────
+// Manual add - open form with pre-selected category
+function openManualFormWithCategory(category) {
     document.getElementById('manual-form').style.display = 'block';
+    if (!document.getElementById('manual-date').value) {
+        document.getElementById('manual-date').value = getTodayInputValue();
+    }
+    document.getElementById('manual-category').value = category;
+    document.getElementById('manual-desc').focus();
+}
+
+document.getElementById('add-income-btn').addEventListener('click', () => {
+    openManualFormWithCategory('income');
+});
+
+document.getElementById('add-need-btn').addEventListener('click', () => {
+    openManualFormWithCategory('needs');
+});
+
+document.getElementById('add-want-btn').addEventListener('click', () => {
+    openManualFormWithCategory('wants');
 });
 
 document.getElementById('cancel-manual').addEventListener('click', () => {
-    document.getElementById('manual-form').style.display = 'none';
-    document.getElementById('manual-date').value = '';
-    document.getElementById('manual-desc').value = '';
-    document.getElementById('manual-amount').value = '';
+    resetManualForm();
 });
 
 document.getElementById('save-manual').addEventListener('click', () => {
-    const date = document.getElementById('manual-date').value.trim();
+    const date = formatDateForStorage(document.getElementById('manual-date').value);
     const desc = document.getElementById('manual-desc').value.trim();
     const amountStr = document.getElementById('manual-amount').value.trim();
+    const category = document.getElementById('manual-category').value;
 
-    if (!date || !desc || !amountStr) {
+    if (!date || !desc || !amountStr || !category) {
         alert('Please fill all fields.');
-        return;
-    }
-    if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
-        alert('Date must be MM/DD/YYYY');
         return;
     }
     const amount = parseFloat(amountStr);
@@ -340,20 +508,19 @@ document.getElementById('save-manual').addEventListener('click', () => {
         return;
     }
 
-    const cleaned = desc.replace(/\s*\(.*\)/g, '').trim();
-    const category = categorizeTransaction(cleaned, desc, amount);
-
     saveState("Add manual transaction");
 
-    const newTxn = { date, originalCategory: desc, adjustedAmount: amount, category, rawAmount: amount };
+    const newTxn = {
+        date,
+        originalCategory: desc,
+        adjustedAmount: amount,
+        category,               // Use the selected category
+        rawAmount: amount
+    };
     manualTransactions.unshift(newTxn);
     saveAllTransactions();
     updateTransactions();
-
-    document.getElementById('manual-form').style.display = 'none';
-    document.getElementById('manual-date').value = '';
-    document.getElementById('manual-desc').value = '';
-    document.getElementById('manual-amount').value = '';
+    resetManualForm();
 });
 
 // Clear imported
@@ -401,7 +568,6 @@ document.getElementById('process').addEventListener('click', function() {
                 throw new Error('Required columns not found.');
             }
 
-            const yearSet = new Set();
             const newImported = [];
 
             for (let i = 1; i < rows.length; i++) {
@@ -414,9 +580,6 @@ document.getElementById('process').addEventListener('click', function() {
                     date = String(rawDate || '').trim();
                     if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) continue;
                 }
-
-                const year = parseInt(date.split('/')[2]);
-                yearSet.add(year);
 
                 const originalCategory = String(rows[i][categoryCol] || '').trim();
                 const amount = parseFloat(rows[i][amountCol]) || 0;
@@ -433,15 +596,13 @@ document.getElementById('process').addEventListener('click', function() {
             }
 
             saveState("Import file");
+            isJoeViewActive = false;
+            resetCalculatedOutput();
             importedTransactions = newImported;
-            availableYears = Array.from(yearSet);
             saveAllTransactions();
             updateTransactions();
 
-            document.getElementById('results-section').style.display = 'block';
             document.getElementById('loading').style.display = 'none';
-            document.getElementById('transactions-container').style.display = 'block';
-            document.getElementById('toggle-arrow').textContent = '▼';
 
             document.getElementById('calculate').textContent = 'Calculate Joint Breakdown';
             document.getElementById('view-toggle').textContent = 'Switch to Joe\'s View';
@@ -463,21 +624,26 @@ document.getElementById('process').addEventListener('click', function() {
 
 // Calculate listeners
 function attachCalculateListener() {
-    document.getElementById('calculate').onclick = () => calculateBreakdown(false);
+    document.getElementById('calculate').onclick = () => calculateBreakdown(isJoeViewActive);
 }
 
 function attachViewToggleListener() {
     const toggle = document.getElementById('view-toggle');
     toggle.onclick = () => {
-        const isJoe = toggle.textContent.includes("Joe");
-        calculateBreakdown(!isJoe);
-        toggle.textContent = isJoe ? "Switch to Joe's View" : "Switch to Joint View";
-        document.getElementById('calculate').textContent = isJoe ? 'Calculate Joint Breakdown' : 'Calculate Joe\'s Breakdown';
+        isJoeViewActive = !isJoeViewActive;
+        calculateBreakdown(isJoeViewActive);
+        toggle.textContent = isJoeViewActive ? "Switch to Joint View" : "Switch to Joe's View";
+        document.getElementById('calculate').textContent = isJoeViewActive ? 'Calculate Joe\'s Breakdown' : 'Calculate Joint Breakdown';
     };
 }
 
 // calculateBreakdown - full version
 function calculateBreakdown(isJoeView = false) {
+    if (currentYear === null) return;
+
+    isJoeViewActive = isJoeView;
+    hasCalculatedBreakdown = true;
+
     allTransactions.forEach((txn, i) => {
         const sel = document.getElementById(`category-${i}`);
         if (sel) txn.category = sel.value;
@@ -509,10 +675,10 @@ function calculateBreakdown(isJoeView = false) {
     allTransactions.forEach(txn => {
         const match = txn.date.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
         if (!match) return;
-        const txnYear = parseInt(match[3]);
+        const txnYear = parseInt(match[3], 10);
         if (txnYear !== currentYear) return;
 
-        const monthName = months[parseInt(match[1]) - 1];
+        const monthName = months[parseInt(match[1], 10) - 1];
         const lc = txn.originalCategory.toLowerCase();
         const isJoint = lc.includes('(joint)');
         const isAlwaysJointNeed = alwaysJointNeeds.some(kw => lc.includes(kw));

@@ -30,6 +30,13 @@ p {
     font-size: 1.1rem;
 }
 
+.form-helper {
+    margin: 0 0 16px;
+    font-size: 0.95rem;
+    color: #6b7280;
+    text-align: left;
+}
+
 /* Container */
 .container {
     max-width: 1200px;
@@ -101,6 +108,28 @@ td {
     border-bottom: 1px solid #eee;
 }
 
+.amount-income {
+    color: #1f8f53;
+    font-weight: 700;
+}
+
+.amount-expense {
+    color: #c0392b;
+    font-weight: 700;
+}
+
+.amount-zero {
+    color: #7f8c8d;
+    font-weight: 700;
+}
+
+.empty-row td {
+    text-align: center;
+    color: #6b7280;
+    font-style: italic;
+    padding: 28px 15px;
+}
+
 tr:hover {
     background-color: #f8fdff;
     transition: background 0.2s;
@@ -140,6 +169,23 @@ tr:hover {
 
 #results-section h2:hover {
     background: #e8f4fc;
+}
+
+.transaction-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 0 16px;
+}
+
+.meta-pill {
+    background: #eef6ff;
+    color: #1f4f82;
+    border: 1px solid #cfe3fb;
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
 }
 
 /* Progress bars in totals */
@@ -225,7 +271,7 @@ select:focus {
     outline: 2px solid #3498db;
 }
 
-/* Add this new rule */
+/* Year select */
 #year-select {
     padding: 10px 14px;
     font-size: 1.1em;
@@ -241,8 +287,6 @@ select:focus {
     border-color: #2980b9;
     box-shadow: 0 0 8px rgba(52,152,219,0.4);
 }
-
-/* Existing styles remain — just adding new ones */
 
 /* Dark Mode */
 body.dark-mode {
@@ -294,6 +338,28 @@ body.dark-mode .category-group td {
     background-color: #0f3460 !important;
 }
 
+body.dark-mode .form-helper {
+    color: #b8c3d6;
+}
+
+body.dark-mode .meta-pill {
+    background: #1e2d4e;
+    border-color: #36527d;
+    color: #d8e6ff;
+}
+
+body.dark-mode .empty-row td {
+    color: #b8c3d6;
+}
+
+body.dark-mode .amount-income {
+    color: #58d68d;
+}
+
+body.dark-mode .amount-expense {
+    color: #ff8a80;
+}
+
 /* Dark Mode Toggle Button */
 #dark-mode-toggle {
     background: none;
@@ -320,13 +386,15 @@ body.dark-mode #dark-mode-toggle {
     font-weight: 600;
 }
 
-#manual-form input {
+#manual-form input,
+#manual-form select {
     width: 100%;
     max-width: 400px;
     padding: 12px;
     border-radius: 8px;
     border: 2px solid #3498db;
     font-size: 1rem;
+    margin-bottom: 10px;
 }
 
 #manual-form button {
@@ -335,7 +403,7 @@ body.dark-mode #dark-mode-toggle {
 
 /* Responsive buttons */
 @media (max-width: 768px) {
-    #calculate, #view-toggle, #add-manual-btn {
+    #calculate, #view-toggle, #add-income-btn, #add-need-btn, #add-want-btn {
         display: block;
         width: 100%;
         margin: 10px 0;
@@ -399,4 +467,63 @@ body.dark-mode #dark-mode-toggle {
 
 #undo-btn:not(:disabled):hover, #redo-btn:not(:disabled):hover {
     background: #2980b9;
+}
+
+/* ─────────────────────────────────────────────── */
+/* New styles for the three category-specific buttons */
+
+.manual-add-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.add-btn {
+    padding: 12px 24px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    color: white;
+    min-width: 180px;
+    border: none;
+}
+
+.add-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+}
+
+.add-btn.income {
+    background: #27ae60; /* green */
+}
+
+.add-btn.need {
+    background: #e74c3c; /* red */
+}
+
+.add-btn.want {
+    background: #f39c12; /* orange */
+}
+
+.add-btn.income:hover { background: #219653; }
+.add-btn.need:hover    { background: #c0392b; }
+.add-btn.want:hover    { background: #e67e22; }
+
+/* Dark mode adjustments */
+body.dark-mode .add-btn.income { background: #2ecc71; }
+body.dark-mode .add-btn.need   { background: #e74c3c; }
+body.dark-mode .add-btn.want   { background: #f1c40f; }
+
+/* Better disabled state */
+button:disabled,
+button[disabled] {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
 }

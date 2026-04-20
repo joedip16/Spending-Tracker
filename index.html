@@ -13,13 +13,12 @@
             <button id="dark-mode-toggle" title="Toggle Dark Mode">🌙</button>
         </header>
 
-        <p>Upload your transactions CSV/Excel file <strong>or</strong> add/edit them manually below.</p>
+        <p>Upload your transactions CSV/Excel file <strong>or</strong> add new entries below.</p>
 
         <div id="upload-section">
             <input type="file" id="upload" accept=".xlsx, .csv">
             <br><br>
             <button id="process">Process File</button>
-            <button id="add-manual-btn">Add Transaction Manually</button>
             <button id="clear-imported" style="background:#e74c3c;">Clear Imported Transactions</button>
             <button id="undo-btn" disabled>↺ Undo</button>
             <button id="redo-btn" disabled>↻ Redo</button>
@@ -27,22 +26,47 @@
                 <p>Processing...</p>
                 <div class="spinner"></div>
             </div>
+
+            <!-- Three category-specific buttons -->
+            <div class="manual-add-buttons">
+                <button id="add-income-btn" class="add-btn income">+ Add Income / Savings</button>
+                <button id="add-need-btn" class="add-btn need">+ Add Need</button>
+                <button id="add-want-btn" class="add-btn want">+ Add Want</button>
+            </div>
         </div>
 
         <!-- Manual Add Form -->
         <div id="manual-form" style="display:none; background:white; padding:20px; border-radius:12px; margin:20px 0; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
             <h3>Add New Transaction</h3>
-            <label>Date: <input type="text" id="manual-date" placeholder="MM/DD/YYYY" required></label><br><br>
-            <label>Description: <input type="text" id="manual-desc" placeholder="e.g., Starbucks Coffee" required></label><br><br>
-            <label>Amount: <input type="number" id="manual-amount" step="0.01" placeholder="e.g., -8.50 or 3000.00" required></label><br><br>
-            <button id="save-manual">Save Transaction</button>
-            <button id="cancel-manual">Cancel</button>
+            <p class="form-helper">Income is usually positive. Expenses are usually negative.</p>
+            <label for="manual-date">Date:</label>
+            <input type="date" id="manual-date" required>
+
+            <label for="manual-desc">Description:</label>
+            <input type="text" id="manual-desc" placeholder="e.g., Starbucks Coffee or Paycheck" required>
+
+            <label for="manual-amount">Amount:</label>
+            <input type="number" id="manual-amount" step="0.01" placeholder="e.g., -8.50 or 3000.00" required>
+
+            <label for="manual-category">Category:</label>
+            <select id="manual-category" required>
+                <option value="income">Income / Savings</option>
+                <option value="needs">Needs</option>
+                <option value="wants">Wants</option>
+                <option value="uncategorized">Uncategorized</option>
+            </select>
+
+            <div style="margin-top: 20px;">
+                <button id="save-manual">Save Transaction</button>
+                <button id="cancel-manual">Cancel</button>
+            </div>
         </div>
 
         <div id="results-section" style="display:none;">
             <h2 style="cursor: pointer;" onclick="toggleTransactions()">
                 Review & Edit Transactions <span id="toggle-arrow" style="font-size:1.2em;">▼</span>
             </h2>
+            <div id="transaction-meta" class="transaction-meta"></div>
             <div id="transactions-container">
                 <div class="table-wrapper">
                     <table id="transactions">
@@ -76,7 +100,7 @@
             </div>
 
             <div style="text-align:center; margin:40px 0;">
-                <button id="export">Export Monthly Breakdown to CSV</button>
+                <button id="export" style="display:none;">Export Monthly Breakdown to CSV</button>
             </div>
         </div>
     </div>
@@ -85,7 +109,7 @@
     <div id="edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); justify-content:center; align-items:center; z-index:100; flex-direction:column;">
         <div style="background:white; padding:30px; border-radius:12px; width:90%; max-width:500px; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
             <h3>Edit Transaction</h3>
-            <label>Date: <input type="text" id="edit-date" placeholder="MM/DD/YYYY" style="width:100%; padding:10px; margin:10px 0;"></label><br>
+            <label>Date: <input type="date" id="edit-date" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Description: <input type="text" id="edit-desc" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Amount: <input type="number" id="edit-amount" step="0.01" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Category:
