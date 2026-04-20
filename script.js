@@ -11,6 +11,7 @@ let currentYear = null;
 let editingIndex = null;
 let isJoeViewActive = false;
 let hasCalculatedBreakdown = false;
+let currentPage = 'home';
 
 // History for undo/redo
 let history = [];
@@ -135,6 +136,7 @@ function updateTransactions() {
     allTransactions = [...importedTransactions, ...manualTransactions].sort(compareTransactions);
     deriveAvailableYears();
     syncResultsVisibility();
+    renderHomeDashboard();
 
     if (!allTransactions.length) return;
 
@@ -213,6 +215,194 @@ function getAmountDisplay(amount) {
     }
 
     return { text: '$0.00', className: 'amount-zero' };
+}
+
+function buildBudgetSnapshot(year, isJoeView = false) {
+    if (year === null) return null;
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const incomeSources = { 'Joe Paycheck': 0, 'Leah Paycheck': 0, 'Interest': 0, 'Tax Returns': 0, 'Gambling': 0, 'Gifts': 0, 'Favors': 0, 'Selling Items': 0 };
+    const needsSubcategories = { 'Mortgage': 0, 'HOA': 0, 'PSE&G': 0, 'Water Bill': 0, 'Student Loans': 0, 'Car Payment': 0, 'Car Maintenance': 0, 'Gas': 0, 'Groceries': 0, 'Home Improvement': 0, 'Healthcare': 0, 'Petcare': 0, 'Haircut': 0, 'Insurance': 0 };
+    const wantsSubcategories = { 'Eating Out': 0, 'Gifts': 0, 'Golf': 0, 'Shopping': 0, 'Xfinity': 0, 'Entertainment': 0, 'Gambling': 0, 'Alcohol': 0, 'Travel': 0, 'Video Games': 0, 'Sporting Events': 0, 'Vacation': 0, 'Activites': 0, 'Hobbies (Books)': 0, 'Subscriptions': 0 };
+    const data = {};
+
+    months.forEach(month => {
+        data[month] = {
+            income: 0,
+            needs: 0,
+            wants: 0,
+            expenses: 0,
+            netIncome: 0,
+            incomeSources: { ...incomeSources },
+            needsSubcategories: { ...needsSubcategories },
+            wantsSubcategories: { ...wantsSubcategories },
+            needsPercent: 0,
+            wantsPercent: 0,
+            netPercent: 0
+        };
+    });
+
+    const totals = {
+        income: 0,
+        needs: 0,
+        wants: 0,
+        expenses: 0,
+        incomeSources: { ...incomeSources },
+        needsSubcategories: { ...needsSubcategories },
+        wantsSubcategories: { ...wantsSubcategories }
+    };
+
+    const alwaysJointNeeds = ['mortgage', 'hoa', 'xfinity', 'insurance', 'healthcare', 'pse&g', 'pseg', 'kids', 'water bill', 'petcare', 'home improvement'];
+
+    allTransactions.forEach(txn => {
+        const match = txn.date.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (!match) return;
+
+        const txnYear = parseInt(match[3], 10);
+        if (txnYear !== year) return;
+
+        const monthName = months[parseInt(match[1], 10) - 1];
+        const lc = txn.originalCategory.toLowerCase();
+        const isJoint = lc.includes('(joint)');
+        const isAlwaysJointNeed = alwaysJointNeeds.some(kw => lc.includes(kw));
+
+        let amount = txn.adjustedAmount;
+        let absAmt = Math.abs(amount);
+
+        if (isJoeView) {
+            if (txn.category === 'income') {
+                if (lc.includes('leah paycheck') || isJoint) {
+                    amount = 0;
+                    absAmt = 0;
+                }
+            } else if (isJoint || isAlwaysJointNeed) {
+                amount /= 2;
+                absAmt = Math.abs(amount);
+            }
+        }
+
+        if (txn.category === 'income') {
+            data[monthName].income += amount;
+            if (lc.includes('joe paycheck')) data[monthName].incomeSources['Joe Paycheck'] += amount;
+            else if (lc.includes('leah paycheck')) data[monthName].incomeSources['Leah Paycheck'] += amount;
+            else if (lc.includes('interest')) data[monthName].incomeSources['Interest'] += amount;
+            else if (lc.includes('tax return')) data[monthName].incomeSources['Tax Returns'] += amount;
+            else if (lc.includes('gambling')) data[monthName].incomeSources['Gambling'] += amount;
+            else if (lc.includes('gift')) data[monthName].incomeSources['Gifts'] += amount;
+            else if (lc.includes('favor')) data[monthName].incomeSources['Favors'] += amount;
+            else if (lc.includes('selling')) data[monthName].incomeSources['Selling Items'] += amount;
+        } else if (txn.category === 'needs') {
+            data[monthName].needs += absAmt;
+            data[monthName].expenses += absAmt;
+            if (lc.includes('mortgage')) data[monthName].needsSubcategories['Mortgage'] += absAmt;
+            else if (lc.includes('hoa')) data[monthName].needsSubcategories['HOA'] += absAmt;
+            else if (lc.includes('pse&g') || lc.includes('pseg')) data[monthName].needsSubcategories['PSE&G'] += absAmt;
+            else if (lc.includes('water bill')) data[monthName].needsSubcategories['Water Bill'] += absAmt;
+            else if (lc.includes('student loan')) data[monthName].needsSubcategories['Student Loans'] += absAmt;
+            else if (lc.includes('car payment')) data[monthName].needsSubcategories['Car Payment'] += absAmt;
+            else if (lc.includes('car maintenance')) data[monthName].needsSubcategories['Car Maintenance'] += absAmt;
+            else if (lc.includes('gas')) data[monthName].needsSubcategories['Gas'] += absAmt;
+            else if (lc.includes('groceries')) data[monthName].needsSubcategories['Groceries'] += absAmt;
+            else if (lc.includes('home improvement')) data[monthName].needsSubcategories['Home Improvement'] += absAmt;
+            else if (lc.includes('healthcare') || lc.includes('health')) data[monthName].needsSubcategories['Healthcare'] += absAmt;
+            else if (lc.includes('petcare') || lc.includes('pet') || lc.includes('vet')) data[monthName].needsSubcategories['Petcare'] += absAmt;
+            else if (lc.includes('haircut')) data[monthName].needsSubcategories['Haircut'] += absAmt;
+            else if (lc.includes('insurance')) data[monthName].needsSubcategories['Insurance'] += absAmt;
+        } else if (txn.category === 'wants') {
+            data[monthName].wants += absAmt;
+            data[monthName].expenses += absAmt;
+            if (lc.includes('eating out') || lc.includes('restaurant')) data[monthName].wantsSubcategories['Eating Out'] += absAmt;
+            else if (lc.includes('gift')) data[monthName].wantsSubcategories['Gifts'] += absAmt;
+            else if (lc.includes('golf')) data[monthName].wantsSubcategories['Golf'] += absAmt;
+            else if (lc.includes('shopping')) data[monthName].wantsSubcategories['Shopping'] += absAmt;
+            else if (lc.includes('xfinity') || lc.includes('comcast')) data[monthName].wantsSubcategories['Xfinity'] += absAmt;
+            else if (lc.includes('entertainment')) data[monthName].wantsSubcategories['Entertainment'] += absAmt;
+            else if (lc.includes('gambling')) data[monthName].wantsSubcategories['Gambling'] += absAmt;
+            else if (lc.includes('alcohol') || lc.includes('liquor')) data[monthName].wantsSubcategories['Alcohol'] += absAmt;
+            else if (lc.includes('travel')) data[monthName].wantsSubcategories['Travel'] += absAmt;
+            else if (lc.includes('video game')) data[monthName].wantsSubcategories['Video Games'] += absAmt;
+            else if (lc.includes('sporting event')) data[monthName].wantsSubcategories['Sporting Events'] += absAmt;
+            else if (lc.includes('vacation')) data[monthName].wantsSubcategories['Vacation'] += absAmt;
+            else if (lc.includes('activit')) data[monthName].wantsSubcategories['Activites'] += absAmt;
+            else if (lc.includes('hobbie') || lc.includes('book')) data[monthName].wantsSubcategories['Hobbies (Books)'] += absAmt;
+            else if (lc.includes('subscription')) data[monthName].wantsSubcategories['Subscriptions'] += absAmt;
+        }
+    });
+
+    Object.values(data).forEach(monthData => {
+        monthData.netIncome = monthData.income - monthData.expenses;
+        monthData.needsPercent = monthData.income > 0 ? (monthData.needs / monthData.income * 100) : 0;
+        monthData.wantsPercent = monthData.income > 0 ? (monthData.wants / monthData.income * 100) : 0;
+        monthData.netPercent = monthData.income > 0 ? (monthData.netIncome / monthData.income * 100) : 0;
+
+        totals.income += monthData.income;
+        totals.needs += monthData.needs;
+        totals.wants += monthData.wants;
+        totals.expenses += monthData.expenses;
+
+        Object.keys(incomeSources).forEach(key => totals.incomeSources[key] += monthData.incomeSources[key]);
+        Object.keys(needsSubcategories).forEach(key => totals.needsSubcategories[key] += monthData.needsSubcategories[key]);
+        Object.keys(wantsSubcategories).forEach(key => totals.wantsSubcategories[key] += monthData.wantsSubcategories[key]);
+    });
+
+    const numActiveMonths = Object.values(data).filter(month => month.income > 0 || month.expenses > 0).length || 1;
+    const avgIncome = totals.income / numActiveMonths;
+    const avgNeeds = totals.needs / numActiveMonths;
+    const avgWants = totals.wants / numActiveMonths;
+    const avgNet = avgIncome - (avgNeeds + avgWants);
+    const avgNeedsPct = avgIncome > 0 ? (avgNeeds / avgIncome * 100) : 0;
+    const avgWantsPct = avgIncome > 0 ? (avgWants / avgIncome * 100) : 0;
+    const avgNetPercent = avgIncome > 0 ? (avgNet / avgIncome * 100) : 0;
+
+    return {
+        monthlyData: data,
+        totals,
+        numMonths: numActiveMonths,
+        avgIncome,
+        avgNeeds,
+        avgWants,
+        avgNet,
+        avgNeedsPct,
+        avgWantsPct,
+        avgNetPercent
+    };
+}
+
+function renderHomeDashboard() {
+    const empty = document.getElementById('home-empty');
+    const dashboard = document.getElementById('home-dashboard');
+
+    if (!allTransactions.length || availableYears.length === 0) {
+        empty.style.display = 'block';
+        dashboard.style.display = 'none';
+        document.getElementById('home-subtitle').textContent = 'Add transactions to see your current wants, needs, and savings percentages.';
+        return;
+    }
+
+    empty.style.display = 'none';
+    dashboard.style.display = 'block';
+
+    const homeYear = currentYear !== null && availableYears.includes(currentYear) ? currentYear : availableYears[0];
+    const snapshot = buildBudgetSnapshot(homeYear, false);
+    if (!snapshot) return;
+
+    document.getElementById('home-subtitle').textContent = `Live joint snapshot for ${homeYear}.`;
+    document.getElementById('home-year-title').textContent = `${homeYear} Snapshot`;
+    document.getElementById('home-wants-percent').textContent = `${snapshot.avgWantsPct.toFixed(1)}%`;
+    document.getElementById('home-needs-percent').textContent = `${snapshot.avgNeedsPct.toFixed(1)}%`;
+    document.getElementById('home-savings-percent').textContent = `${snapshot.avgNetPercent.toFixed(1)}%`;
+    document.getElementById('home-wants-amount').textContent = `$${formatMoney(snapshot.avgWants)} / $${formatMoney(snapshot.avgIncome)} income`;
+    document.getElementById('home-needs-amount').textContent = `$${formatMoney(snapshot.avgNeeds)} / $${formatMoney(snapshot.avgIncome)} income`;
+    document.getElementById('home-savings-amount').textContent = `$${formatMoney(snapshot.avgNet)} remaining on average`;
+    document.getElementById('home-wants-bar').style.width = `${Math.min(snapshot.avgWantsPct, 100)}%`;
+    document.getElementById('home-needs-bar').style.width = `${Math.min(snapshot.avgNeedsPct, 100)}%`;
+    document.getElementById('home-savings-bar').style.width = `${Math.min(Math.max(snapshot.avgNetPercent, 0), 100)}%`;
+
+    document.getElementById('home-insight-list').innerHTML = [
+        `<div class="insight-item"><strong>$${formatMoney(snapshot.avgIncome)}</strong><span>Average monthly income across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.</span></div>`,
+        `<div class="insight-item"><strong>$${formatMoney(snapshot.avgNeeds + snapshot.avgWants)}</strong><span>Average monthly spending on needs and wants combined.</span></div>`,
+        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch years and inspect the full breakdown.</span></div>`
+    ].join('');
 }
 
 function updateTransactionMeta() {
@@ -606,7 +796,7 @@ document.getElementById('process').addEventListener('click', function() {
 
             document.getElementById('calculate').textContent = 'Calculate Joint Breakdown';
             document.getElementById('view-toggle').textContent = 'Switch to Joe\'s View';
-
+            switchPage('transactions');
             document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
 
         } catch (err) {
@@ -637,6 +827,22 @@ function attachViewToggleListener() {
     };
 }
 
+function switchPage(page) {
+    currentPage = page;
+    document.getElementById('home-page').classList.toggle('active', page === 'home');
+    document.getElementById('transactions-page').classList.toggle('active', page === 'transactions');
+    document.getElementById('nav-home').classList.toggle('active', page === 'home');
+    document.getElementById('nav-transactions').classList.toggle('active', page === 'transactions');
+}
+
+function attachNavigationListeners() {
+    document.querySelectorAll('.nav-btn').forEach(button => {
+        button.addEventListener('click', () => switchPage(button.dataset.page));
+    });
+
+    document.getElementById('go-to-transactions').addEventListener('click', () => switchPage('transactions'));
+}
+
 // calculateBreakdown - full version
 function calculateBreakdown(isJoeView = false) {
     if (currentYear === null) return;
@@ -650,125 +856,28 @@ function calculateBreakdown(isJoeView = false) {
     });
 
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    monthlyData = {};
     const incomeSources = { 'Joe Paycheck': 0, 'Leah Paycheck': 0, 'Interest': 0, 'Tax Returns': 0, 'Gambling': 0, 'Gifts': 0, 'Favors': 0, 'Selling Items': 0 };
     const needsSubcategories = { 'Mortgage': 0, 'HOA': 0, 'PSE&G': 0, 'Water Bill': 0, 'Student Loans': 0, 'Car Payment': 0, 'Car Maintenance': 0, 'Gas': 0, 'Groceries': 0, 'Home Improvement': 0, 'Healthcare': 0, 'Petcare': 0, 'Haircut': 0, 'Insurance': 0 };
     const wantsSubcategories = { 'Eating Out': 0, 'Gifts': 0, 'Golf': 0, 'Shopping': 0, 'Xfinity': 0, 'Entertainment': 0, 'Gambling': 0, 'Alcohol': 0, 'Travel': 0, 'Video Games': 0, 'Sporting Events': 0, 'Vacation': 0, 'Activites': 0, 'Hobbies (Books)': 0, 'Subscriptions': 0 };
+    const snapshot = buildBudgetSnapshot(currentYear, isJoeView);
+    if (!snapshot) return;
 
-    months.forEach(m => {
-        monthlyData[m] = {
-            income: 0, needs: 0, wants: 0, expenses: 0, netIncome: 0,
-            incomeSources: { ...incomeSources },
-            needsSubcategories: { ...needsSubcategories },
-            wantsSubcategories: { ...wantsSubcategories },
-            needsPercent: 0, wantsPercent: 0, netPercent: 0
-        };
-    });
+    monthlyData = snapshot.monthlyData;
+    totalIncomeSources = snapshot.totals.incomeSources;
+    totalNeedsSubcategories = snapshot.totals.needsSubcategories;
+    totalWantsSubcategories = snapshot.totals.wantsSubcategories;
+    numMonths = snapshot.numMonths;
 
-    totalIncomeSources = { ...incomeSources };
-    totalNeedsSubcategories = { ...needsSubcategories };
-    totalWantsSubcategories = { ...wantsSubcategories };
-    let totalIncome = 0, totalNeeds = 0, totalWants = 0, totalExpenses = 0;
-
-    const alwaysJointNeeds = ['mortgage', 'hoa', 'xfinity', 'insurance', 'healthcare', 'pse&g', 'pseg', 'kids', 'water bill', 'petcare', 'home improvement'];
-
-    allTransactions.forEach(txn => {
-        const match = txn.date.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (!match) return;
-        const txnYear = parseInt(match[3], 10);
-        if (txnYear !== currentYear) return;
-
-        const monthName = months[parseInt(match[1], 10) - 1];
-        const lc = txn.originalCategory.toLowerCase();
-        const isJoint = lc.includes('(joint)');
-        const isAlwaysJointNeed = alwaysJointNeeds.some(kw => lc.includes(kw));
-
-        let amount = txn.adjustedAmount;
-        let absAmt = Math.abs(amount);
-
-        if (isJoeView) {
-            if (txn.category === 'income') {
-                if (lc.includes('leah paycheck') || isJoint) {
-                    amount = 0;
-                    absAmt = 0;
-                }
-            } else if (isJoint || isAlwaysJointNeed) {
-                amount /= 2;
-                absAmt = Math.abs(amount);
-            }
-        }
-
-        if (txn.category === 'income') {
-            monthlyData[monthName].income += amount;
-            if (lc.includes('joe paycheck')) monthlyData[monthName].incomeSources['Joe Paycheck'] += amount;
-            else if (lc.includes('leah paycheck')) monthlyData[monthName].incomeSources['Leah Paycheck'] += amount;
-            else if (lc.includes('interest')) monthlyData[monthName].incomeSources['Interest'] += amount;
-            else if (lc.includes('tax return')) monthlyData[monthName].incomeSources['Tax Returns'] += amount;
-            else if (lc.includes('gambling')) monthlyData[monthName].incomeSources['Gambling'] += amount;
-            else if (lc.includes('gift')) monthlyData[monthName].incomeSources['Gifts'] += amount;
-            else if (lc.includes('favor')) monthlyData[monthName].incomeSources['Favors'] += amount;
-            else if (lc.includes('selling')) monthlyData[monthName].incomeSources['Selling Items'] += amount;
-        } else if (txn.category === 'needs') {
-            monthlyData[monthName].needs += absAmt;
-            monthlyData[monthName].expenses += absAmt;
-            if (lc.includes('mortgage')) monthlyData[monthName].needsSubcategories['Mortgage'] += absAmt;
-            else if (lc.includes('hoa')) monthlyData[monthName].needsSubcategories['HOA'] += absAmt;
-            else if (lc.includes('pse&g') || lc.includes('pseg')) monthlyData[monthName].needsSubcategories['PSE&G'] += absAmt;
-            else if (lc.includes('water bill')) monthlyData[monthName].needsSubcategories['Water Bill'] += absAmt;
-            else if (lc.includes('student loan')) monthlyData[monthName].needsSubcategories['Student Loans'] += absAmt;
-            else if (lc.includes('car payment')) monthlyData[monthName].needsSubcategories['Car Payment'] += absAmt;
-            else if (lc.includes('car maintenance')) monthlyData[monthName].needsSubcategories['Car Maintenance'] += absAmt;
-            else if (lc.includes('gas')) monthlyData[monthName].needsSubcategories['Gas'] += absAmt;
-            else if (lc.includes('groceries')) monthlyData[monthName].needsSubcategories['Groceries'] += absAmt;
-            else if (lc.includes('home improvement')) monthlyData[monthName].needsSubcategories['Home Improvement'] += absAmt;
-            else if (lc.includes('healthcare') || lc.includes('health')) monthlyData[monthName].needsSubcategories['Healthcare'] += absAmt;
-            else if (lc.includes('petcare') || lc.includes('pet') || lc.includes('vet')) monthlyData[monthName].needsSubcategories['Petcare'] += absAmt;
-            else if (lc.includes('haircut')) monthlyData[monthName].needsSubcategories['Haircut'] += absAmt;
-            else if (lc.includes('insurance')) monthlyData[monthName].needsSubcategories['Insurance'] += absAmt;
-        } else if (txn.category === 'wants') {
-            monthlyData[monthName].wants += absAmt;
-            monthlyData[monthName].expenses += absAmt;
-            if (lc.includes('eating out') || lc.includes('restaurant')) monthlyData[monthName].wantsSubcategories['Eating Out'] += absAmt;
-            else if (lc.includes('gift')) monthlyData[monthName].wantsSubcategories['Gifts'] += absAmt;
-            else if (lc.includes('golf')) monthlyData[monthName].wantsSubcategories['Golf'] += absAmt;
-            else if (lc.includes('shopping')) monthlyData[monthName].wantsSubcategories['Shopping'] += absAmt;
-            else if (lc.includes('xfinity') || lc.includes('comcast')) monthlyData[monthName].wantsSubcategories['Xfinity'] += absAmt;
-            else if (lc.includes('entertainment')) monthlyData[monthName].wantsSubcategories['Entertainment'] += absAmt;
-            else if (lc.includes('gambling')) monthlyData[monthName].wantsSubcategories['Gambling'] += absAmt;
-            else if (lc.includes('alcohol') || lc.includes('liquor')) monthlyData[monthName].wantsSubcategories['Alcohol'] += absAmt;
-            else if (lc.includes('travel')) monthlyData[monthName].wantsSubcategories['Travel'] += absAmt;
-            else if (lc.includes('video game')) monthlyData[monthName].wantsSubcategories['Video Games'] += absAmt;
-            else if (lc.includes('sporting event')) monthlyData[monthName].wantsSubcategories['Sporting Events'] += absAmt;
-            else if (lc.includes('vacation')) monthlyData[monthName].wantsSubcategories['Vacation'] += absAmt;
-            else if (lc.includes('activit')) monthlyData[monthName].wantsSubcategories['Activites'] += absAmt;
-            else if (lc.includes('hobbie') || lc.includes('book')) monthlyData[monthName].wantsSubcategories['Hobbies (Books)'] += absAmt;
-            else if (lc.includes('subscription')) monthlyData[monthName].wantsSubcategories['Subscriptions'] += absAmt;
-        }
-    });
-
-    Object.values(monthlyData).forEach(data => {
-        data.netIncome = data.income - data.expenses;
-        data.needsPercent = data.income > 0 ? (data.needs / data.income * 100) : 0;
-        data.wantsPercent = data.income > 0 ? (data.wants / data.income * 100) : 0;
-        data.netPercent = data.income > 0 ? (data.netIncome / data.income * 100) : 0;
-
-        totalIncome += data.income;
-        totalNeeds += data.needs;
-        totalWants += data.wants;
-        totalExpenses += data.expenses;
-
-        Object.keys(incomeSources).forEach(k => totalIncomeSources[k] += data.incomeSources[k]);
-        Object.keys(needsSubcategories).forEach(k => totalNeedsSubcategories[k] += data.needsSubcategories[k]);
-        Object.keys(wantsSubcategories).forEach(k => totalWantsSubcategories[k] += data.wantsSubcategories[k]);
-    });
-
-    numMonths = Object.values(monthlyData).filter(m => m.income > 0 || m.expenses > 0).length || 1;
-    const avgIncome = totalIncome / numMonths;
-    const avgNeeds = totalNeeds / numMonths;
-    const avgWants = totalWants / numMonths;
-    const avgNetPercent = avgIncome > 0 ? ((avgIncome - (avgNeeds + avgWants)) / avgIncome * 100) : 0;
-    const avgNeedsPct = avgIncome > 0 ? (avgNeeds / avgIncome * 100) : 0;
-    const avgWantsPct = avgIncome > 0 ? (avgWants / avgIncome * 100) : 0;
+    const totalIncome = snapshot.totals.income;
+    const totalNeeds = snapshot.totals.needs;
+    const totalWants = snapshot.totals.wants;
+    const totalExpenses = snapshot.totals.expenses;
+    const avgIncome = snapshot.avgIncome;
+    const avgNeeds = snapshot.avgNeeds;
+    const avgWants = snapshot.avgWants;
+    const avgNetPercent = snapshot.avgNetPercent;
+    const avgNeedsPct = snapshot.avgNeedsPct;
+    const avgWantsPct = snapshot.avgWantsPct;
 
     function colorPercent(value, threshold, goodBelow = true) {
         if (value === 0) return value.toFixed(1);
@@ -875,6 +984,9 @@ document.getElementById('export').addEventListener('click', function() {
 // Init
 window.addEventListener('load', () => {
     loadPersistedData();
+    attachNavigationListeners();
     attachCalculateListener();
     attachViewToggleListener();
+    renderHomeDashboard();
+    switchPage('home');
 });
