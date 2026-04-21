@@ -159,8 +159,14 @@
 
                 <div id="results-section" style="display:none;">
                     <h2 class="section-title" style="cursor: pointer;" onclick="toggleTransactions()">
-                        Review & Edit Transactions <span id="toggle-arrow" style="font-size:1.2em;">▼</span>
+                        Review & Edit Transactions <span id="toggle-arrow" style="font-size:1.2em;">►</span>
                     </h2>
+                    <div class="breakdown-controls transactions-filters">
+                        <label for="transaction-year-select">Year:</label>
+                        <select id="transaction-year-select"></select>
+                        <label for="transaction-month-select">Month:</label>
+                        <select id="transaction-month-select"></select>
+                    </div>
                     <div id="transaction-meta" class="transaction-meta"></div>
                     <div id="transactions-container">
                         <div class="table-wrapper">

@@ -221,7 +221,7 @@ function syncResultsVisibility() {
 
     if (!hasTransactions) {
         document.getElementById('transactions-container').style.display = 'none';
-        document.getElementById('toggle-arrow').textContent = '▼';
+        document.getElementById('toggle-arrow').textContent = '►';
         currentYear = null;
         currentMonth = 'all';
         resetCalculatedOutput();
@@ -262,17 +262,30 @@ function updateTransactions() {
 
     if (!allTransactions.length) return;
 
-    document.getElementById('transactions-container').style.display = 'block';
-    document.getElementById('toggle-arrow').textContent = '▼';
+    document.getElementById('transactions-container').style.display = 'none';
+    document.getElementById('toggle-arrow').textContent = '►';
     displayTransactions();
     populateYearSelector();
     populateMonthSelector();
+    populateTransactionPeriodSelectors();
     refreshCalculatedView();
 }
 
 function getSelectedMonths() {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return currentMonth === 'all' ? months : [months[parseInt(currentMonth, 10) - 1]];
+    if (currentMonth !== 'all') {
+        return [months[parseInt(currentMonth, 10) - 1]];
+    }
+
+    const today = new Date();
+    const currentCalendarYear = today.getFullYear();
+    const currentCalendarMonthIndex = today.getMonth();
+
+    if (currentYear === currentCalendarYear) {
+        return months.slice(0, currentCalendarMonthIndex + 1);
+    }
+
+    return months;
 }
 
 function transactionMatchesCurrentPeriod(txn) {
@@ -838,7 +851,7 @@ function toggleTransactions() {
         arrow.textContent = '▼';
     } else {
         container.style.display = 'none';
-        arrow.textContent = '▲';
+        arrow.textContent = '►';
     }
 }
 
@@ -867,6 +880,7 @@ function populateYearSelector() {
     select.onchange = () => {
         currentYear = parseInt(select.value, 10);
         populateMonthSelector();
+        populateTransactionPeriodSelectors();
         displayTransactions();
         renderHomeDashboard();
         calculateBreakdown(isJoeViewActive);
@@ -893,6 +907,56 @@ function populateMonthSelector() {
     select.value = currentMonth;
     select.onchange = () => {
         currentMonth = select.value;
+        populateTransactionPeriodSelectors();
+        displayTransactions();
+        renderHomeDashboard();
+        calculateBreakdown(isJoeViewActive);
+    };
+}
+
+function populateTransactionPeriodSelectors() {
+    const yearSelect = document.getElementById('transaction-year-select');
+    const monthSelect = document.getElementById('transaction-month-select');
+    const months = ['All Months', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    yearSelect.innerHTML = '';
+    yearSelect.onchange = null;
+
+    availableYears.forEach(year => {
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year;
+        yearSelect.appendChild(option);
+    });
+
+    if (currentYear !== null) {
+        yearSelect.value = String(currentYear);
+    }
+
+    monthSelect.innerHTML = '';
+    monthSelect.onchange = null;
+    months.forEach((month, index) => {
+        const option = document.createElement('option');
+        option.value = index === 0 ? 'all' : String(index);
+        option.textContent = month;
+        monthSelect.appendChild(option);
+    });
+    monthSelect.value = currentMonth;
+
+    yearSelect.onchange = () => {
+        currentYear = parseInt(yearSelect.value, 10);
+        populateYearSelector();
+        populateMonthSelector();
+        populateTransactionPeriodSelectors();
+        displayTransactions();
+        renderHomeDashboard();
+        calculateBreakdown(isJoeViewActive);
+    };
+
+    monthSelect.onchange = () => {
+        currentMonth = monthSelect.value;
+        populateMonthSelector();
+        populateTransactionPeriodSelectors();
         displayTransactions();
         renderHomeDashboard();
         calculateBreakdown(isJoeViewActive);
@@ -1080,6 +1144,11 @@ function switchPage(page) {
     document.getElementById('nav-home').classList.toggle('active', page === 'home');
     document.getElementById('nav-transactions').classList.toggle('active', page === 'transactions');
     document.getElementById('nav-settings').classList.toggle('active', page === 'settings');
+
+    if (page === 'transactions' && document.getElementById('results-section').style.display !== 'none') {
+        document.getElementById('transactions-container').style.display = 'none';
+        document.getElementById('toggle-arrow').textContent = '►';
+    }
 }
 
 function attachNavigationListeners() {
