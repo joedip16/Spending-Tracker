@@ -79,6 +79,28 @@
                             <button id="go-to-transactions" class="panel-button">Open Transactions</button>
                         </section>
                     </div>
+
+                    <section id="home-breakdown-section" class="panel home-breakdown-panel" style="display:none;">
+                        <div class="breakdown-controls">
+                            <label for="year-select">Year:</label>
+                            <select id="year-select"></select>
+                            <label for="month-select">Month:</label>
+                            <select id="month-select"></select>
+                            <button id="calculate">Calculate Breakdown</button>
+                            <button id="view-toggle">Switch View</button>
+                        </div>
+
+                        <div id="monthly-breakdown"></div>
+
+                        <div id="totals">
+                            <h2>50 40 30 Summary (Average)</h2>
+                            <div id="totals-text"></div>
+                        </div>
+
+                        <div style="text-align:center; margin:40px 0 0;">
+                            <button id="export" style="display:none;">Export Monthly Breakdown to CSV</button>
+                        </div>
+                    </section>
                 </div>
             </section>
 
@@ -157,25 +179,6 @@
                         </div>
                     </div>
 
-                    <div class="breakdown-controls">
-                        <label for="year-select">Year:</label>
-                        <select id="year-select"></select>
-                        <label for="month-select">Month:</label>
-                        <select id="month-select"></select>
-                        <button id="calculate">Calculate Breakdown</button>
-                        <button id="view-toggle">Switch View</button>
-                    </div>
-
-                    <div id="monthly-breakdown"></div>
-
-                    <div id="totals">
-                        <h2>50 40 30 Summary (Average)</h2>
-                        <div id="totals-text"></div>
-                    </div>
-
-                    <div style="text-align:center; margin:40px 0;">
-                        <button id="export" style="display:none;">Export Monthly Breakdown to CSV</button>
-                    </div>
                 </div>
             </section>
 

@@ -238,6 +238,7 @@ function resetCalculatedOutput() {
     document.getElementById('monthly-breakdown').innerHTML = '';
     document.getElementById('totals-text').innerHTML = '';
     document.getElementById('export').style.display = 'none';
+    document.getElementById('home-breakdown-section').style.display = 'none';
     hasCalculatedBreakdown = false;
 }
 
@@ -584,11 +585,13 @@ function renderHomeDashboard() {
         empty.style.display = 'block';
         dashboard.style.display = 'none';
         document.getElementById('home-subtitle').textContent = 'Add transactions to see your current wants, needs, and savings percentages.';
+        document.getElementById('home-breakdown-section').style.display = 'none';
         return;
     }
 
     empty.style.display = 'none';
     dashboard.style.display = 'block';
+    document.getElementById('home-breakdown-section').style.display = 'block';
 
     const homeYear = currentYear !== null && availableYears.includes(currentYear) ? currentYear : availableYears[0];
     const snapshot = buildBudgetSnapshot(homeYear, false, currentMonth);
@@ -1223,10 +1226,11 @@ function calculateBreakdown(isJoeView = false) {
         </div>
     `;
 
+    document.getElementById('home-breakdown-section').style.display = 'block';
     document.getElementById('export').style.display = 'block';
-    document.getElementById('transactions-container').style.display = 'none';
-    document.getElementById('toggle-arrow').textContent = '▲';
-    document.getElementById('monthly-breakdown').scrollIntoView({ behavior: 'smooth' });
+    if (currentPage === 'home') {
+        document.getElementById('monthly-breakdown').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 // Export

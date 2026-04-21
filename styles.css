@@ -220,6 +220,10 @@ table,
     gap: 18px;
 }
 
+.home-breakdown-panel {
+    margin-top: 20px;
+}
+
 .panel {
     padding: 24px;
 }
