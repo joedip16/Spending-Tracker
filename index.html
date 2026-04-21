@@ -92,30 +92,26 @@
                 <div id="upload-section">
                     <input type="file" id="upload" accept=".xlsx, .csv">
                     <br><br>
-                    <button id="process">Process File</button>
-                    <button id="clear-imported" style="background:#e74c3c;">Clear Imported Transactions</button>
-                    <button id="undo-btn" disabled>↺ Undo</button>
-                    <button id="redo-btn" disabled>↻ Redo</button>
+                    <button id="process">Import Transactions</button>
+                    <button id="add-transaction-btn">Add Transaction</button>
                     <div id="loading">
                         <p>Processing...</p>
                         <div class="spinner"></div>
-                    </div>
-
-                    <div class="manual-add-buttons">
-                        <button id="add-income-btn" class="add-btn income">+ Add Income / Savings</button>
-                        <button id="add-need-btn" class="add-btn need">+ Add Need</button>
-                        <button id="add-want-btn" class="add-btn want">+ Add Want</button>
                     </div>
                 </div>
 
                 <div id="manual-form" style="display:none; background:white; padding:20px; border-radius:12px; margin:20px 0; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
                     <h3>Add New Transaction</h3>
-                    <p class="form-helper">Income is usually positive. Expenses are usually negative.</p>
+                    <p class="form-helper">Choose the category here, then add the date, description, and amount.</p>
                     <label for="manual-date">Date:</label>
                     <input type="date" id="manual-date" required>
 
-                    <label for="manual-desc">Description:</label>
-                    <input type="text" id="manual-desc" placeholder="e.g., Starbucks Coffee or Paycheck" required>
+                    <label for="manual-desc-select">Description:</label>
+                    <select id="manual-desc-select" required>
+                        <option value="">Select a transaction type</option>
+                        <option value="__new__">+ Add brand new transaction type</option>
+                    </select>
+                    <input type="text" id="manual-desc" placeholder="Type a new transaction name" style="display:none;" />
 
                     <label for="manual-amount">Amount:</label>
                     <input type="number" id="manual-amount" step="0.01" placeholder="e.g., -8.50 or 3000.00" required>
@@ -126,6 +122,12 @@
                         <option value="needs">Needs</option>
                         <option value="wants">Wants</option>
                         <option value="uncategorized">Uncategorized</option>
+                    </select>
+
+                    <label for="manual-purchase-type">Purchase Type:</label>
+                    <select id="manual-purchase-type" required>
+                        <option value="single">Single</option>
+                        <option value="joint">Joint</option>
                     </select>
 
                     <div style="margin-top: 20px;">
@@ -175,12 +177,45 @@
                     </div>
                 </div>
             </section>
+
+            <section id="settings-page" class="page">
+                <div class="page-intro">
+                    <h2>Settings</h2>
+                    <p>Adjust the app experience and keep your most-used preferences in one place.</p>
+                </div>
+
+                <div class="settings-grid">
+                    <section class="panel settings-card">
+                        <p class="panel-kicker">Appearance</p>
+                        <h3>Theme</h3>
+                        <p class="panel-copy">Switch between light and dark mode whenever you want.</p>
+
+                        <label class="setting-row" for="settings-dark-mode">
+                            <div>
+                                <strong>Dark mode</strong>
+                                <p>Use a darker interface across the whole tracker.</p>
+                            </div>
+                            <span class="settings-switch">
+                                <input type="checkbox" id="settings-dark-mode">
+                                <span class="settings-slider"></span>
+                            </span>
+                        </label>
+                    </section>
+
+                    <section class="panel settings-card">
+                        <p class="panel-kicker">More Coming Soon</p>
+                        <h3>Preference space</h3>
+                        <p class="panel-copy">This menu is ready for future tweaks like default views, export choices, and category preferences.</p>
+                    </section>
+                </div>
+            </section>
         </main>
     </div>
 
     <nav class="bottom-nav">
         <button id="nav-home" class="nav-btn active" data-page="home">Home</button>
         <button id="nav-transactions" class="nav-btn" data-page="transactions">Transactions</button>
+        <button id="nav-settings" class="nav-btn" data-page="settings">Settings</button>
     </nav>
 
     <div id="edit-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); justify-content:center; align-items:center; z-index:100; flex-direction:column;">

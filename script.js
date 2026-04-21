@@ -55,8 +55,11 @@ function restoreState(state) {
 }
 
 function updateUndoRedoButtons() {
-    document.getElementById('undo-btn').disabled = historyIndex < 1;
-    document.getElementById('redo-btn').disabled = historyIndex >= history.length - 1;
+    const undoButton = document.getElementById('undo-btn');
+    const redoButton = document.getElementById('redo-btn');
+
+    if (undoButton) undoButton.disabled = historyIndex < 1;
+    if (redoButton) redoButton.disabled = historyIndex >= history.length - 1;
 }
 
 // Load persisted data
@@ -70,15 +73,22 @@ function loadPersistedData() {
     allTransactions = [...importedTransactions, ...manualTransactions];
 
     const darkMode = localStorage.getItem('darkMode') === 'true';
-    if (darkMode) {
-        document.body.classList.add('dark-mode');
-        document.getElementById('dark-mode-toggle').textContent = '☀️';
-    }
+    setDarkMode(darkMode);
 
     if (allTransactions.length > 0) updateTransactions();
 
     // Save initial state for undo
     saveState("Page load");
+}
+
+function setDarkMode(isDark) {
+    document.body.classList.toggle('dark-mode', isDark);
+    document.getElementById('dark-mode-toggle').textContent = isDark ? '☀️' : '🌙';
+
+    const settingsToggle = document.getElementById('settings-dark-mode');
+    if (settingsToggle) settingsToggle.checked = isDark;
+
+    localStorage.setItem('darkMode', isDark);
 }
 
 // Save both sets
@@ -126,9 +136,12 @@ function resetCalculatedOutput() {
 function resetManualForm() {
     document.getElementById('manual-form').style.display = 'none';
     document.getElementById('manual-date').value = '';
+    document.getElementById('manual-desc-select').value = '';
     document.getElementById('manual-desc').value = '';
+    document.getElementById('manual-desc').style.display = 'none';
     document.getElementById('manual-amount').value = '';
     document.getElementById('manual-category').value = 'income';
+    document.getElementById('manual-purchase-type').value = 'single';
 }
 
 // Rebuild allTransactions and refresh UI
@@ -215,6 +228,73 @@ function getAmountDisplay(amount) {
     }
 
     return { text: '$0.00', className: 'amount-zero' };
+}
+
+function getBaseDescription(description) {
+    return String(description || '').replace(/\s+\(joint\)$/i, '').trim();
+}
+
+function getManualDescriptionOptions() {
+    const counts = new Map();
+
+    allTransactions.forEach(txn => {
+        const baseDescription = getBaseDescription(txn.originalCategory);
+        if (!baseDescription) return;
+        counts.set(baseDescription, (counts.get(baseDescription) || 0) + 1);
+    });
+
+    return Array.from(counts.entries())
+        .sort((a, b) => {
+            if (b[1] !== a[1]) return b[1] - a[1];
+            return a[0].localeCompare(b[0]);
+        })
+        .map(entry => entry[0]);
+}
+
+function populateManualDescriptionOptions() {
+    const select = document.getElementById('manual-desc-select');
+    const previousValue = select.value;
+    const options = getManualDescriptionOptions();
+
+    select.innerHTML = `
+        <option value="">Select a transaction type</option>
+        <option value="__new__">+ Add brand new transaction type</option>
+    `;
+
+    options.forEach(optionValue => {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = optionValue;
+        select.appendChild(option);
+    });
+
+    if ([...select.options].some(option => option.value === previousValue)) {
+        select.value = previousValue;
+    }
+}
+
+function updateManualDescriptionInput() {
+    const select = document.getElementById('manual-desc-select');
+    const input = document.getElementById('manual-desc');
+    const isNewDescription = select.value === '__new__';
+
+    input.style.display = isNewDescription ? 'block' : 'none';
+    input.required = isNewDescription;
+
+    if (!isNewDescription) {
+        input.value = '';
+    }
+}
+
+function getSelectedManualDescription() {
+    const select = document.getElementById('manual-desc-select');
+    const input = document.getElementById('manual-desc');
+
+    if (select.value === '__new__') {
+        return input.value.trim();
+    }
+
+    return select.value.trim();
 }
 
 function buildBudgetSnapshot(year, isJoeView = false) {
@@ -649,33 +729,28 @@ function populateYearSelector() {
 
 // Dark mode
 document.getElementById('dark-mode-toggle').addEventListener('click', () => {
-    document.body.classList.toggle('dark-mode');
-    const isDark = document.body.classList.contains('dark-mode');
-    document.getElementById('dark-mode-toggle').textContent = isDark ? '☀️' : '🌙';
-    localStorage.setItem('darkMode', isDark);
+    setDarkMode(!document.body.classList.contains('dark-mode'));
 });
 
 // ───────────────────────────────────────────────
-// Manual add - open form with pre-selected category
-function openManualFormWithCategory(category) {
+// Manual add
+function openManualForm() {
     document.getElementById('manual-form').style.display = 'block';
     if (!document.getElementById('manual-date').value) {
         document.getElementById('manual-date').value = getTodayInputValue();
     }
-    document.getElementById('manual-category').value = category;
-    document.getElementById('manual-desc').focus();
+    populateManualDescriptionOptions();
+    updateManualDescriptionInput();
+    document.getElementById('manual-desc-select').focus();
 }
 
-document.getElementById('add-income-btn').addEventListener('click', () => {
-    openManualFormWithCategory('income');
-});
+document.getElementById('add-transaction-btn').addEventListener('click', openManualForm);
 
-document.getElementById('add-need-btn').addEventListener('click', () => {
-    openManualFormWithCategory('needs');
-});
-
-document.getElementById('add-want-btn').addEventListener('click', () => {
-    openManualFormWithCategory('wants');
+document.getElementById('manual-desc-select').addEventListener('change', () => {
+    updateManualDescriptionInput();
+    if (document.getElementById('manual-desc-select').value === '__new__') {
+        document.getElementById('manual-desc').focus();
+    }
 });
 
 document.getElementById('cancel-manual').addEventListener('click', () => {
@@ -684,11 +759,12 @@ document.getElementById('cancel-manual').addEventListener('click', () => {
 
 document.getElementById('save-manual').addEventListener('click', () => {
     const date = formatDateForStorage(document.getElementById('manual-date').value);
-    const desc = document.getElementById('manual-desc').value.trim();
+    const desc = getSelectedManualDescription();
     const amountStr = document.getElementById('manual-amount').value.trim();
     const category = document.getElementById('manual-category').value;
+    const purchaseType = document.getElementById('manual-purchase-type').value;
 
-    if (!date || !desc || !amountStr || !category) {
+    if (!date || !desc || !amountStr || !category || !purchaseType) {
         alert('Please fill all fields.');
         return;
     }
@@ -700,9 +776,14 @@ document.getElementById('save-manual').addEventListener('click', () => {
 
     saveState("Add manual transaction");
 
+    let finalDescription = desc.replace(/\s+\(joint\)$/i, '').trim();
+    if (purchaseType === 'joint') {
+        finalDescription = `${finalDescription} (joint)`;
+    }
+
     const newTxn = {
         date,
-        originalCategory: desc,
+        originalCategory: finalDescription,
         adjustedAmount: amount,
         category,               // Use the selected category
         rawAmount: amount
@@ -712,20 +793,6 @@ document.getElementById('save-manual').addEventListener('click', () => {
     updateTransactions();
     resetManualForm();
 });
-
-// Clear imported
-document.getElementById('clear-imported').addEventListener('click', () => {
-    if (!confirm('Delete ALL imported transactions? Manual entries will remain.')) return;
-
-    saveState("Clear imported transactions");
-    importedTransactions = [];
-    saveAllTransactions();
-    updateTransactions();
-});
-
-// Undo / Redo
-document.getElementById('undo-btn').addEventListener('click', undo);
-document.getElementById('redo-btn').addEventListener('click', redo);
 
 // File processing
 document.getElementById('process').addEventListener('click', function() {
@@ -831,8 +898,10 @@ function switchPage(page) {
     currentPage = page;
     document.getElementById('home-page').classList.toggle('active', page === 'home');
     document.getElementById('transactions-page').classList.toggle('active', page === 'transactions');
+    document.getElementById('settings-page').classList.toggle('active', page === 'settings');
     document.getElementById('nav-home').classList.toggle('active', page === 'home');
     document.getElementById('nav-transactions').classList.toggle('active', page === 'transactions');
+    document.getElementById('nav-settings').classList.toggle('active', page === 'settings');
 }
 
 function attachNavigationListeners() {
@@ -841,6 +910,9 @@ function attachNavigationListeners() {
     });
 
     document.getElementById('go-to-transactions').addEventListener('click', () => switchPage('transactions'));
+    document.getElementById('settings-dark-mode').addEventListener('change', event => {
+        setDarkMode(event.target.checked);
+    });
 }
 
 // calculateBreakdown - full version
