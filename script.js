@@ -1206,6 +1206,9 @@ function switchPage(page) {
     document.getElementById('nav-home').classList.toggle('active', page === 'home');
     document.getElementById('nav-transactions').classList.toggle('active', page === 'transactions');
     document.getElementById('nav-settings').classList.toggle('active', page === 'settings');
+    document.querySelectorAll('.section-nav-btn').forEach(button => {
+        button.classList.toggle('active', button.dataset.page === page);
+    });
 
     if (page === 'transactions' && document.getElementById('results-section').style.display !== 'none') {
         document.getElementById('transactions-container').style.display = 'none';
@@ -1215,6 +1218,9 @@ function switchPage(page) {
 
 function attachNavigationListeners() {
     document.querySelectorAll('.nav-btn').forEach(button => {
+        button.addEventListener('click', () => switchPage(button.dataset.page));
+    });
+    document.querySelectorAll('.section-nav-btn').forEach(button => {
         button.addEventListener('click', () => switchPage(button.dataset.page));
     });
     document.querySelectorAll('.snapshot-tab').forEach(button => {

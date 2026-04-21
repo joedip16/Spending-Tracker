@@ -422,6 +422,26 @@ table,
     margin-bottom: 16px;
 }
 
+.section-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.section-nav-btn {
+    background: rgba(47, 111, 237, 0.08);
+    color: var(--blue-deep);
+    box-shadow: none;
+    border: 1px solid rgba(47, 111, 237, 0.14);
+    padding: 10px 14px;
+}
+
+.section-nav-btn.active {
+    background: var(--blue);
+    color: white;
+}
+
 .settings-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
