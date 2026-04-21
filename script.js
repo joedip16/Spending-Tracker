@@ -8,6 +8,7 @@ let totalWantsSubcategories = {};
 let numMonths = 0;
 let availableYears = [];
 let currentYear = null;
+let currentMonth = 'all';
 let editingIndex = null;
 let isJoeViewActive = false;
 let hasCalculatedBreakdown = false;
@@ -57,9 +58,8 @@ function getPersonalViewLabel() {
 }
 
 function getSharedViewLabel() {
-    if (!currentProfile?.isSharedBudget) return 'Overall View';
-    const householdName = currentProfile.householdName.trim();
-    return householdName || 'Household View';
+    if (!currentProfile?.isSharedBudget) return 'Overall';
+    return 'Joint';
 }
 
 function getCurrentBreakdownLabel(isPersonalView) {
@@ -230,6 +230,7 @@ function syncResultsVisibility() {
         document.getElementById('transactions-container').style.display = 'none';
         document.getElementById('toggle-arrow').textContent = '▼';
         currentYear = null;
+        currentMonth = 'all';
         resetCalculatedOutput();
     }
 }
@@ -271,7 +272,26 @@ function updateTransactions() {
     document.getElementById('toggle-arrow').textContent = '▼';
     displayTransactions();
     populateYearSelector();
+    populateMonthSelector();
     refreshCalculatedView();
+}
+
+function getSelectedMonths() {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return currentMonth === 'all' ? months : [months[parseInt(currentMonth, 10) - 1]];
+}
+
+function transactionMatchesCurrentPeriod(txn) {
+    const match = String(txn.date || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return false;
+
+    const txnMonth = parseInt(match[1], 10);
+    const txnYear = parseInt(match[3], 10);
+
+    if (currentYear !== null && txnYear !== currentYear) return false;
+    if (currentMonth !== 'all' && txnMonth !== parseInt(currentMonth, 10)) return false;
+
+    return true;
 }
 
 function parseTransactionDate(dateString) {
@@ -411,7 +431,7 @@ function getSelectedManualDescription() {
     return select.value.trim();
 }
 
-function buildBudgetSnapshot(year, isJoeView = false) {
+function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
     if (year === null) return null;
 
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -454,6 +474,7 @@ function buildBudgetSnapshot(year, isJoeView = false) {
 
         const txnYear = parseInt(match[3], 10);
         if (txnYear !== year) return;
+        if (monthFilter !== 'all' && parseInt(match[1], 10) !== parseInt(monthFilter, 10)) return;
 
         const monthName = months[parseInt(match[1], 10) - 1];
         const lc = txn.originalCategory.toLowerCase();
@@ -577,11 +598,12 @@ function renderHomeDashboard() {
     dashboard.style.display = 'block';
 
     const homeYear = currentYear !== null && availableYears.includes(currentYear) ? currentYear : availableYears[0];
-    const snapshot = buildBudgetSnapshot(homeYear, false);
+    const snapshot = buildBudgetSnapshot(homeYear, false, currentMonth);
     if (!snapshot) return;
 
-    document.getElementById('home-subtitle').textContent = `Live ${getSharedViewLabel().toLowerCase()} snapshot for ${homeYear}.`;
-    document.getElementById('home-year-title').textContent = `${homeYear} Snapshot`;
+    const periodLabel = currentMonth === 'all' ? `${homeYear}` : `${getSelectedMonths()[0]} ${homeYear}`;
+    document.getElementById('home-subtitle').textContent = `Live ${getSharedViewLabel().toLowerCase()} snapshot for ${periodLabel}.`;
+    document.getElementById('home-year-title').textContent = `${periodLabel} Snapshot`;
     document.getElementById('home-wants-percent').textContent = `${snapshot.avgWantsPct.toFixed(1)}%`;
     document.getElementById('home-needs-percent').textContent = `${snapshot.avgNeedsPct.toFixed(1)}%`;
     document.getElementById('home-savings-percent').textContent = `${snapshot.avgNetPercent.toFixed(1)}%`;
@@ -595,7 +617,7 @@ function renderHomeDashboard() {
     document.getElementById('home-insight-list').innerHTML = [
         `<div class="insight-item"><strong>$${formatMoney(snapshot.avgIncome)}</strong><span>Average monthly income across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.</span></div>`,
         `<div class="insight-item"><strong>$${formatMoney(snapshot.avgNeeds + snapshot.avgWants)}</strong><span>Average monthly spending on needs and wants combined.</span></div>`,
-        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch years and inspect the full ${getSharedViewLabel().toLowerCase()} breakdown.</span></div>`
+        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch months or years and inspect the full ${getSharedViewLabel().toLowerCase()} breakdown.</span></div>`
     ].join('');
 }
 
@@ -603,13 +625,20 @@ function updateTransactionMeta() {
     const meta = document.getElementById('transaction-meta');
     if (!meta) return;
 
-    const totalCount = allTransactions.length;
-    const uncategorizedCount = allTransactions.filter(txn => txn.category === 'uncategorized').length;
+    const visibleTransactions = allTransactions.filter(transactionMatchesCurrentPeriod);
+    const totalCount = visibleTransactions.length;
+    const uncategorizedCount = visibleTransactions.filter(txn => txn.category === 'uncategorized').length;
+    const periodLabel = currentYear === null
+        ? 'No period selected'
+        : currentMonth === 'all'
+            ? `${currentYear}`
+            : `${getSelectedMonths()[0]} ${currentYear}`;
 
     meta.innerHTML = [
+        `<span class="meta-pill">${periodLabel}</span>`,
         `<span class="meta-pill">${totalCount} transaction${totalCount === 1 ? '' : 's'}</span>`,
-        `<span class="meta-pill">${importedTransactions.length} imported</span>`,
-        `<span class="meta-pill">${manualTransactions.length} manual</span>`,
+        `<span class="meta-pill">${visibleTransactions.filter(txn => importedTransactions.includes(txn)).length} imported</span>`,
+        `<span class="meta-pill">${visibleTransactions.filter(txn => manualTransactions.includes(txn)).length} manual</span>`,
         `<span class="meta-pill">${uncategorizedCount} uncategorized</span>`
     ].join('');
 }
@@ -675,13 +704,16 @@ function displayTransactions() {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    if (allTransactions.length === 0) {
+    const filteredTransactions = allTransactions.filter(transactionMatchesCurrentPeriod);
+
+    if (filteredTransactions.length === 0) {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No transactions yet. Import a file or add one manually to get started.</td></tr>';
         updateTransactionMeta();
         return;
     }
 
-    allTransactions.forEach((txn, i) => {
+    filteredTransactions.forEach(txn => {
+        const i = allTransactions.indexOf(txn);
         const amountDisplay = getAmountDisplay(txn.adjustedAmount);
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -822,6 +854,7 @@ function populateYearSelector() {
 
     if (availableYears.length === 0) {
         currentYear = null;
+        currentMonth = 'all';
         return;
     }
 
@@ -837,6 +870,35 @@ function populateYearSelector() {
 
     select.onchange = () => {
         currentYear = parseInt(select.value, 10);
+        populateMonthSelector();
+        displayTransactions();
+        renderHomeDashboard();
+        calculateBreakdown(isJoeViewActive);
+    };
+}
+
+function populateMonthSelector() {
+    const select = document.getElementById('month-select');
+    const months = ['All Months', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    select.innerHTML = '';
+    select.onchange = null;
+
+    months.forEach((month, index) => {
+        const option = document.createElement('option');
+        option.value = index === 0 ? 'all' : String(index);
+        option.textContent = month;
+        select.appendChild(option);
+    });
+
+    if (currentMonth !== 'all' && (parseInt(currentMonth, 10) < 1 || parseInt(currentMonth, 10) > 12)) {
+        currentMonth = 'all';
+    }
+
+    select.value = currentMonth;
+    select.onchange = () => {
+        currentMonth = select.value;
+        displayTransactions();
+        renderHomeDashboard();
         calculateBreakdown(isJoeViewActive);
     };
 }
@@ -1073,10 +1135,11 @@ function calculateBreakdown(isJoeView = false) {
     });
 
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const visibleMonths = getSelectedMonths();
     const incomeSources = { 'Joe Paycheck': 0, 'Leah Paycheck': 0, 'Interest': 0, 'Tax Returns': 0, 'Gambling': 0, 'Gifts': 0, 'Favors': 0, 'Selling Items': 0 };
     const needsSubcategories = { 'Mortgage': 0, 'HOA': 0, 'PSE&G': 0, 'Water Bill': 0, 'Student Loans': 0, 'Car Payment': 0, 'Car Maintenance': 0, 'Gas': 0, 'Groceries': 0, 'Home Improvement': 0, 'Healthcare': 0, 'Petcare': 0, 'Haircut': 0, 'Insurance': 0 };
     const wantsSubcategories = { 'Eating Out': 0, 'Gifts': 0, 'Golf': 0, 'Shopping': 0, 'Xfinity': 0, 'Entertainment': 0, 'Gambling': 0, 'Alcohol': 0, 'Travel': 0, 'Video Games': 0, 'Sporting Events': 0, 'Vacation': 0, 'Activites': 0, 'Hobbies (Books)': 0, 'Subscriptions': 0 };
-    const snapshot = buildBudgetSnapshot(currentYear, isJoeView);
+    const snapshot = buildBudgetSnapshot(currentYear, isJoeView, currentMonth);
     if (!snapshot) return;
 
     monthlyData = snapshot.monthlyData;
@@ -1102,50 +1165,51 @@ function calculateBreakdown(isJoeView = false) {
         return `<span style="color:${color};font-weight:bold;">${value.toFixed(1)}%</span>`;
     }
 
-    const title = `${getCurrentBreakdownLabel(isJoeView)} ${currentYear} Breakdown`;
+    const periodLabel = currentMonth === 'all' ? `${currentYear}` : `${visibleMonths[0]} ${currentYear}`;
+    const title = `${getCurrentBreakdownLabel(isJoeView)} ${periodLabel} Breakdown`;
 
     let tableHTML = `<h2>${title}</h2><div class="table-wrapper"><table><thead><tr><th>Category</th>`;
-    months.forEach(m => tableHTML += `<th>${m}</th>`);
+    visibleMonths.forEach(m => tableHTML += `<th>${m}</th>`);
     tableHTML += '<th>Average</th><th>Total</th></tr></thead><tbody>';
 
-    const addGroup = label => tableHTML += `<tr class="category-group"><td colspan="15">${label}</td></tr>`;
+    const addGroup = label => tableHTML += `<tr class="category-group"><td colspan="${visibleMonths.length + 3}">${label}</td></tr>`;
 
     addGroup('Income Sources');
     Object.keys(incomeSources).forEach(src => {
         tableHTML += `<tr><td>${src}</td>`;
-        months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].incomeSources[src])}</td>`);
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].incomeSources[src])}</td>`);
         tableHTML += `<td>$${formatMoney(totalIncomeSources[src] / numMonths)}</td><td>$${formatMoney(totalIncomeSources[src])}</td></tr>`;
     });
     tableHTML += `<tr class="category-group"><td>Total Income</td>`;
-    months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].income)}</td>`);
+    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].income)}</td>`);
     tableHTML += `<td>$${formatMoney(avgIncome)}</td><td>$${formatMoney(totalIncome)}</td></tr>`;
 
     addGroup('Needs');
     Object.keys(needsSubcategories).forEach(sub => {
         tableHTML += `<tr><td>${sub}</td>`;
-        months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needsSubcategories[sub])}</td>`);
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needsSubcategories[sub])}</td>`);
         tableHTML += `<td>$${formatMoney(totalNeedsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalNeedsSubcategories[sub])}</td></tr>`;
     });
     tableHTML += `<tr class="category-group"><td>Total Needs</td>`;
-    months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(monthlyData[m].needsPercent, 50, true)})</td>`);
+    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(monthlyData[m].needsPercent, 50, true)})</td>`);
     tableHTML += `<td>$${formatMoney(avgNeeds)} (${colorPercent(avgNeedsPct, 50, true)})</td><td>$${formatMoney(totalNeeds)}</td></tr>`;
 
     addGroup('Wants');
     Object.keys(wantsSubcategories).forEach(sub => {
         tableHTML += `<tr><td>${sub}</td>`;
-        months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wantsSubcategories[sub])}</td>`);
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wantsSubcategories[sub])}</td>`);
         tableHTML += `<td>$${formatMoney(totalWantsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalWantsSubcategories[sub])}</td></tr>`;
     });
     tableHTML += `<tr class="category-group"><td>Total Wants</td>`;
-    months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(monthlyData[m].wantsPercent, 30, true)})</td>`);
+    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(monthlyData[m].wantsPercent, 30, true)})</td>`);
     tableHTML += `<td>$${formatMoney(avgWants)} (${colorPercent(avgWantsPct, 30, true)})</td><td>$${formatMoney(totalWants)}</td></tr>`;
 
     tableHTML += `<tr class="category-group"><td>Total Expenses</td>`;
-    months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].expenses)}</td>`);
+    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].expenses)}</td>`);
     tableHTML += `<td>$${formatMoney(avgNeeds + avgWants)}</td><td>$${formatMoney(totalExpenses)}</td></tr>`;
 
     tableHTML += `<tr class="category-group"><td>Net Income</td>`;
-    months.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].netIncome)} (${colorPercent(monthlyData[m].netPercent, 20, false)})</td>`);
+    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].netIncome)} (${colorPercent(monthlyData[m].netPercent, 20, false)})</td>`);
     tableHTML += `<td>$${formatMoney(avgIncome - (avgNeeds + avgWants))} (${colorPercent(avgNetPercent, 20, false)})</td><td>$${formatMoney(totalIncome - totalExpenses)}</td></tr>`;
 
     tableHTML += '</tbody></table></div>';
@@ -1174,7 +1238,7 @@ function calculateBreakdown(isJoeView = false) {
 
 // Export
 document.getElementById('export').addEventListener('click', function() {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = getSelectedMonths();
     const rows = [[`Monthly Breakdown for ${currentYear}`, 'Income', 'Needs', 'Wants', 'Expenses', 'Net Income', 'Needs %', 'Wants %', 'Net %']];
 
     months.forEach(m => {
