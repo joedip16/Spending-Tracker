@@ -260,10 +260,24 @@
                         </label>
                     </section>
 
-                    <section class="panel settings-card">
-                        <p class="panel-kicker">More Coming Soon</p>
-                        <h3>Preference space</h3>
-                        <p class="panel-copy">This menu is ready for future tweaks like default views, export choices, and category preferences.</p>
+                    <section class="panel settings-card category-manager-card">
+                        <p class="panel-kicker">Categories</p>
+                        <h3>Category Manager</h3>
+                        <p class="panel-copy">Add, rename, or tune the keywords that place transactions into your breakdown rows.</p>
+
+                        <div class="category-add-form">
+                            <select id="new-category-type">
+                                <option value="needs">Needs</option>
+                                <option value="wants">Wants</option>
+                                <option value="income">Income / Savings</option>
+                            </select>
+                            <input type="text" id="new-category-name" placeholder="Category name">
+                            <input type="text" id="new-category-keywords" placeholder="Keywords, separated by commas">
+                            <button id="add-category-btn">Add Category</button>
+                        </div>
+
+                        <div id="category-manager-list" class="category-manager-list"></div>
+                        <button id="reset-categories-btn" class="secondary-button">Reset Default Categories</button>
                     </section>
                 </div>
             </section>

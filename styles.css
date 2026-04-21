@@ -478,9 +478,78 @@ table,
     gap: 18px;
 }
 
+.category-manager-card {
+    grid-column: 1 / -1;
+}
+
 .settings-card h3 {
     margin: 6px 0 10px;
     font-size: 1.6rem;
+}
+
+.category-add-form {
+    display: grid;
+    grid-template-columns: 0.9fr 1fr 1.4fr auto;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.category-add-form input,
+.category-add-form select,
+.category-row input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.category-manager-list {
+    display: grid;
+    gap: 16px;
+    margin-top: 18px;
+}
+
+.category-manager-section {
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: var(--surface-alt);
+    padding: 16px;
+}
+
+.category-manager-section h4 {
+    margin-bottom: 12px;
+    color: var(--blue-deep);
+}
+
+.category-row {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.9fr) minmax(180px, 1.6fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+}
+
+.category-row:first-of-type {
+    border-top: 0;
+}
+
+.category-row button,
+.secondary-button {
+    box-shadow: none;
+}
+
+.secondary-button {
+    margin-top: 18px;
+    background: rgba(47, 111, 237, 0.08);
+    color: var(--blue-deep);
+    border: 1px solid rgba(47, 111, 237, 0.14);
+}
+
+.danger-button {
+    background: #d9514e;
 }
 
 .setting-row {
@@ -862,7 +931,10 @@ body.dark-mode #manual-form select,
 body.dark-mode #edit-modal input,
 body.dark-mode #edit-modal select,
 body.dark-mode #year-select,
-body.dark-mode .modal-card input {
+body.dark-mode .modal-card input,
+body.dark-mode .category-add-form input,
+body.dark-mode .category-add-form select,
+body.dark-mode .category-row input {
     background: rgba(9, 19, 31, 0.76);
     color: var(--text);
 }
@@ -885,6 +957,11 @@ body.dark-mode .nav-btn.active {
     .settings-grid,
     .chart-grid,
     .comparison-card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .category-add-form,
+    .category-row {
         grid-template-columns: 1fr;
     }
 }

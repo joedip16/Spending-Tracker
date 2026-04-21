@@ -15,6 +15,53 @@ let hasCalculatedBreakdown = false;
 let currentPage = 'home';
 let currentProfile = null;
 let currentSnapshotTab = 'overview';
+let budgetCategories = null;
+
+const DEFAULT_BUDGET_CATEGORIES = {
+    income: [
+        { name: 'Joe Paycheck', keywords: ['joe paycheck'] },
+        { name: 'Leah Paycheck', keywords: ['leah paycheck'] },
+        { name: 'Interest', keywords: ['interest'] },
+        { name: 'Tax Returns', keywords: ['tax return'] },
+        { name: 'Gambling', keywords: ['gambling'] },
+        { name: 'Gifts', keywords: ['gift'] },
+        { name: 'Favors', keywords: ['favor'] },
+        { name: 'Selling Items', keywords: ['selling'] }
+    ],
+    needs: [
+        { name: 'Mortgage', keywords: ['mortgage'] },
+        { name: 'HOA', keywords: ['hoa'] },
+        { name: 'PSE&G', keywords: ['pse&g', 'pseg'] },
+        { name: 'Water Bill', keywords: ['water bill'] },
+        { name: 'Student Loans', keywords: ['student loan'] },
+        { name: 'Car Payment', keywords: ['car payment'] },
+        { name: 'Car Maintenance', keywords: ['car maintenance'] },
+        { name: 'Gas', keywords: ['gas'] },
+        { name: 'Groceries', keywords: ['groceries'] },
+        { name: 'Home Improvement', keywords: ['home improvement'] },
+        { name: 'Healthcare', keywords: ['healthcare', 'health'] },
+        { name: 'Petcare', keywords: ['petcare', 'pet', 'vet'] },
+        { name: 'Haircut', keywords: ['haircut'] },
+        { name: 'Insurance', keywords: ['insurance'] }
+    ],
+    wants: [
+        { name: 'Eating Out', keywords: ['eating out', 'restaurant'] },
+        { name: 'Gifts', keywords: ['gift'] },
+        { name: 'Golf', keywords: ['golf'] },
+        { name: 'Shopping', keywords: ['shopping'] },
+        { name: 'Xfinity', keywords: ['xfinity', 'comcast'] },
+        { name: 'Entertainment', keywords: ['entertainment'] },
+        { name: 'Gambling', keywords: ['gambling'] },
+        { name: 'Alcohol', keywords: ['alcohol', 'liquor'] },
+        { name: 'Travel', keywords: ['travel'] },
+        { name: 'Video Games', keywords: ['video game'] },
+        { name: 'Sporting Events', keywords: ['sporting event'] },
+        { name: 'Vacation', keywords: ['vacation'] },
+        { name: 'Activities', keywords: ['activit'] },
+        { name: 'Hobbies (Books)', keywords: ['hobbie', 'book'] },
+        { name: 'Subscriptions', keywords: ['subscription'] }
+    ]
+};
 
 // History for undo/redo
 let history = [];
@@ -27,6 +74,187 @@ function getDefaultProfile() {
         isSharedBudget: false,
         householdName: ''
     };
+}
+
+function cloneDefaultCategories() {
+    return JSON.parse(JSON.stringify(DEFAULT_BUDGET_CATEGORIES));
+}
+
+function normalizeCategoryList(list, fallbackList) {
+    const source = Array.isArray(list) ? list : fallbackList;
+    return source
+        .map(category => ({
+            name: String(category?.name || '').trim(),
+            keywords: Array.isArray(category?.keywords)
+                ? category.keywords.map(keyword => String(keyword).trim()).filter(Boolean)
+                : String(category?.keywords || '').split(',').map(keyword => keyword.trim()).filter(Boolean)
+        }))
+        .filter(category => category.name);
+}
+
+function normalizeBudgetCategories(categories) {
+    const defaults = cloneDefaultCategories();
+    return {
+        income: normalizeCategoryList(categories?.income, defaults.income),
+        needs: normalizeCategoryList(categories?.needs, defaults.needs),
+        wants: normalizeCategoryList(categories?.wants, defaults.wants)
+    };
+}
+
+function loadBudgetCategories() {
+    const savedCategories = localStorage.getItem('budgetCategories');
+    if (!savedCategories) {
+        budgetCategories = cloneDefaultCategories();
+        return;
+    }
+
+    try {
+        budgetCategories = normalizeBudgetCategories(JSON.parse(savedCategories));
+    } catch (error) {
+        budgetCategories = cloneDefaultCategories();
+    }
+}
+
+function saveBudgetCategories() {
+    budgetCategories = normalizeBudgetCategories(budgetCategories);
+    localStorage.setItem('budgetCategories', JSON.stringify(budgetCategories));
+}
+
+function getCategoryList(type) {
+    if (!budgetCategories) loadBudgetCategories();
+    return budgetCategories[type] || [];
+}
+
+function createCategoryTotals(type) {
+    return getCategoryList(type).reduce((totals, category) => {
+        totals[category.name] = 0;
+        return totals;
+    }, {});
+}
+
+function categoryMatchesText(category, text) {
+    const lookup = String(text || '').toLowerCase();
+    const name = category.name.toLowerCase();
+    if (lookup.includes(name)) return true;
+    return category.keywords.some(keyword => lookup.includes(keyword.toLowerCase()));
+}
+
+function findMatchingCategoryName(type, text) {
+    const match = getCategoryList(type).find(category => categoryMatchesText(category, text));
+    return match?.name || null;
+}
+
+function formatCategoryType(type) {
+    if (type === 'income') return 'Income / Savings';
+    return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function refreshAfterCategoryChange() {
+    renderCategoryManager();
+    renderHomeDashboard();
+    populateManualDescriptionOptions();
+    if (allTransactions.length > 0) {
+        displayTransactions();
+        calculateBreakdown(isJoeViewActive);
+    }
+}
+
+function renderCategoryManager() {
+    const container = document.getElementById('category-manager-list');
+    if (!container) return;
+
+    container.innerHTML = ['needs', 'wants', 'income'].map(type => {
+        const rows = getCategoryList(type).map((category, index) => `
+            <div class="category-row" data-type="${type}" data-index="${index}">
+                <input type="text" class="category-name-input" value="${escapeHtml(category.name)}" aria-label="${formatCategoryType(type)} category name">
+                <input type="text" class="category-keywords-input" value="${escapeHtml(category.keywords.join(', '))}" aria-label="${escapeHtml(category.name)} keywords">
+                <button class="save-category-btn" data-type="${type}" data-index="${index}">Save</button>
+                <button class="delete-category-btn danger-button" data-type="${type}" data-index="${index}">Delete</button>
+            </div>
+        `).join('');
+
+        return `
+            <section class="category-manager-section">
+                <h4>${formatCategoryType(type)}</h4>
+                ${rows || '<p class="panel-copy">No categories yet.</p>'}
+            </section>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.save-category-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const row = button.closest('.category-row');
+            const type = button.dataset.type;
+            const index = parseInt(button.dataset.index, 10);
+            const name = row.querySelector('.category-name-input').value.trim();
+            const keywords = row.querySelector('.category-keywords-input').value
+                .split(',')
+                .map(keyword => keyword.trim())
+                .filter(Boolean);
+
+            if (!name) {
+                alert('Please enter a category name.');
+                return;
+            }
+
+            budgetCategories[type][index] = { name, keywords };
+            saveBudgetCategories();
+            refreshAfterCategoryChange();
+        });
+    });
+
+    container.querySelectorAll('.delete-category-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const type = button.dataset.type;
+            const index = parseInt(button.dataset.index, 10);
+            const category = budgetCategories[type][index];
+            if (!confirm(`Delete "${category.name}" from ${formatCategoryType(type)}?`)) return;
+
+            budgetCategories[type].splice(index, 1);
+            saveBudgetCategories();
+            refreshAfterCategoryChange();
+        });
+    });
+}
+
+function addManagedCategory() {
+    const type = document.getElementById('new-category-type').value;
+    const nameInput = document.getElementById('new-category-name');
+    const keywordsInput = document.getElementById('new-category-keywords');
+    const name = nameInput.value.trim();
+    const keywords = keywordsInput.value.split(',').map(keyword => keyword.trim()).filter(Boolean);
+
+    if (!name) {
+        alert('Please enter a category name.');
+        return;
+    }
+
+    if (getCategoryList(type).some(category => category.name.toLowerCase() === name.toLowerCase())) {
+        alert('That category already exists in this group.');
+        return;
+    }
+
+    budgetCategories[type].push({ name, keywords });
+    saveBudgetCategories();
+    nameInput.value = '';
+    keywordsInput.value = '';
+    refreshAfterCategoryChange();
+}
+
+function resetManagedCategories() {
+    if (!confirm('Reset categories back to the original defaults?')) return;
+    budgetCategories = cloneDefaultCategories();
+    saveBudgetCategories();
+    refreshAfterCategoryChange();
 }
 
 function loadProfile() {
@@ -181,6 +409,7 @@ function updateUndoRedoButtons() {
 // Load persisted data
 function loadPersistedData() {
     loadProfile();
+    loadBudgetCategories();
 
     const savedImported = localStorage.getItem('importedTransactions');
     if (savedImported) importedTransactions = JSON.parse(savedImported);
@@ -193,6 +422,7 @@ function loadPersistedData() {
     const darkMode = localStorage.getItem('darkMode') === 'true';
     setDarkMode(darkMode);
     applyProfileToUI();
+    renderCategoryManager();
 
     if (allTransactions.length > 0) updateTransactions();
 
@@ -454,9 +684,9 @@ function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
     if (year === null) return null;
 
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const incomeSources = { 'Joe Paycheck': 0, 'Leah Paycheck': 0, 'Interest': 0, 'Tax Returns': 0, 'Gambling': 0, 'Gifts': 0, 'Favors': 0, 'Selling Items': 0 };
-    const needsSubcategories = { 'Mortgage': 0, 'HOA': 0, 'PSE&G': 0, 'Water Bill': 0, 'Student Loans': 0, 'Car Payment': 0, 'Car Maintenance': 0, 'Gas': 0, 'Groceries': 0, 'Home Improvement': 0, 'Healthcare': 0, 'Petcare': 0, 'Haircut': 0, 'Insurance': 0 };
-    const wantsSubcategories = { 'Eating Out': 0, 'Gifts': 0, 'Golf': 0, 'Shopping': 0, 'Xfinity': 0, 'Entertainment': 0, 'Gambling': 0, 'Alcohol': 0, 'Travel': 0, 'Video Games': 0, 'Sporting Events': 0, 'Vacation': 0, 'Activites': 0, 'Hobbies (Books)': 0, 'Subscriptions': 0 };
+    const incomeSources = createCategoryTotals('income');
+    const needsSubcategories = createCategoryTotals('needs');
+    const wantsSubcategories = createCategoryTotals('wants');
     const data = {};
 
     months.forEach(month => {
@@ -517,49 +747,18 @@ function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
 
         if (txn.category === 'income') {
             data[monthName].income += amount;
-            if (lc.includes('joe paycheck')) data[monthName].incomeSources['Joe Paycheck'] += amount;
-            else if (lc.includes('leah paycheck')) data[monthName].incomeSources['Leah Paycheck'] += amount;
-            else if (lc.includes('interest')) data[monthName].incomeSources['Interest'] += amount;
-            else if (lc.includes('tax return')) data[monthName].incomeSources['Tax Returns'] += amount;
-            else if (lc.includes('gambling')) data[monthName].incomeSources['Gambling'] += amount;
-            else if (lc.includes('gift')) data[monthName].incomeSources['Gifts'] += amount;
-            else if (lc.includes('favor')) data[monthName].incomeSources['Favors'] += amount;
-            else if (lc.includes('selling')) data[monthName].incomeSources['Selling Items'] += amount;
+            const categoryName = findMatchingCategoryName('income', lc);
+            if (categoryName) data[monthName].incomeSources[categoryName] += amount;
         } else if (txn.category === 'needs') {
             data[monthName].needs += absAmt;
             data[monthName].expenses += absAmt;
-            if (lc.includes('mortgage')) data[monthName].needsSubcategories['Mortgage'] += absAmt;
-            else if (lc.includes('hoa')) data[monthName].needsSubcategories['HOA'] += absAmt;
-            else if (lc.includes('pse&g') || lc.includes('pseg')) data[monthName].needsSubcategories['PSE&G'] += absAmt;
-            else if (lc.includes('water bill')) data[monthName].needsSubcategories['Water Bill'] += absAmt;
-            else if (lc.includes('student loan')) data[monthName].needsSubcategories['Student Loans'] += absAmt;
-            else if (lc.includes('car payment')) data[monthName].needsSubcategories['Car Payment'] += absAmt;
-            else if (lc.includes('car maintenance')) data[monthName].needsSubcategories['Car Maintenance'] += absAmt;
-            else if (lc.includes('gas')) data[monthName].needsSubcategories['Gas'] += absAmt;
-            else if (lc.includes('groceries')) data[monthName].needsSubcategories['Groceries'] += absAmt;
-            else if (lc.includes('home improvement')) data[monthName].needsSubcategories['Home Improvement'] += absAmt;
-            else if (lc.includes('healthcare') || lc.includes('health')) data[monthName].needsSubcategories['Healthcare'] += absAmt;
-            else if (lc.includes('petcare') || lc.includes('pet') || lc.includes('vet')) data[monthName].needsSubcategories['Petcare'] += absAmt;
-            else if (lc.includes('haircut')) data[monthName].needsSubcategories['Haircut'] += absAmt;
-            else if (lc.includes('insurance')) data[monthName].needsSubcategories['Insurance'] += absAmt;
+            const categoryName = findMatchingCategoryName('needs', lc);
+            if (categoryName) data[monthName].needsSubcategories[categoryName] += absAmt;
         } else if (txn.category === 'wants') {
             data[monthName].wants += absAmt;
             data[monthName].expenses += absAmt;
-            if (lc.includes('eating out') || lc.includes('restaurant')) data[monthName].wantsSubcategories['Eating Out'] += absAmt;
-            else if (lc.includes('gift')) data[monthName].wantsSubcategories['Gifts'] += absAmt;
-            else if (lc.includes('golf')) data[monthName].wantsSubcategories['Golf'] += absAmt;
-            else if (lc.includes('shopping')) data[monthName].wantsSubcategories['Shopping'] += absAmt;
-            else if (lc.includes('xfinity') || lc.includes('comcast')) data[monthName].wantsSubcategories['Xfinity'] += absAmt;
-            else if (lc.includes('entertainment')) data[monthName].wantsSubcategories['Entertainment'] += absAmt;
-            else if (lc.includes('gambling')) data[monthName].wantsSubcategories['Gambling'] += absAmt;
-            else if (lc.includes('alcohol') || lc.includes('liquor')) data[monthName].wantsSubcategories['Alcohol'] += absAmt;
-            else if (lc.includes('travel')) data[monthName].wantsSubcategories['Travel'] += absAmt;
-            else if (lc.includes('video game')) data[monthName].wantsSubcategories['Video Games'] += absAmt;
-            else if (lc.includes('sporting event')) data[monthName].wantsSubcategories['Sporting Events'] += absAmt;
-            else if (lc.includes('vacation')) data[monthName].wantsSubcategories['Vacation'] += absAmt;
-            else if (lc.includes('activit')) data[monthName].wantsSubcategories['Activites'] += absAmt;
-            else if (lc.includes('hobbie') || lc.includes('book')) data[monthName].wantsSubcategories['Hobbies (Books)'] += absAmt;
-            else if (lc.includes('subscription')) data[monthName].wantsSubcategories['Subscriptions'] += absAmt;
+            const categoryName = findMatchingCategoryName('wants', lc);
+            if (categoryName) data[monthName].wantsSubcategories[categoryName] += absAmt;
         }
     });
 
@@ -731,32 +930,17 @@ function categorizeTransaction(cleanedCategory, originalCategory, amount) {
     const originalLower = originalCategory.toLowerCase();
     const cleanedLower = cleanedCategory.toLowerCase();
     const isIncome = amount > 0;
+    const incomeMatch = findMatchingCategoryName('income', `${cleanedLower} ${originalLower}`);
+    const needsMatch = findMatchingCategoryName('needs', cleanedLower);
+    const wantsMatch = findMatchingCategoryName('wants', cleanedLower);
 
-    if (isIncome && (
-        originalLower.includes('gift') || originalLower.includes('gifts') ||
-        originalLower.includes('joe paycheck') || originalLower.includes('leah paycheck') ||
-        originalLower.includes('interest') || originalLower.includes('tax return') ||
-        originalLower.includes('favor') || originalLower.includes('favors') ||
-        originalLower.includes('selling items') || originalLower.includes('(income)')
-    )) return 'income';
+    if (isIncome && (incomeMatch || originalLower.includes('(income)'))) return 'income';
 
     if (!isIncome && (originalLower.includes('gift') || originalLower.includes('gifts'))) return 'wants';
 
-    if ([
-        'mortgage', 'hoa', 'pse&g', 'pseg', 'water bill', 'student loan',
-        'car payment', 'car maintenance', 'gas', 'groceries',
-        'home improvement', 'healthcare', 'health', 'petcare', 'pet',
-        'haircut', 'insurance', 'kids', 'kid', 'children', 'child',
-        'daycare', 'school', 'tuition', 'babysitter'
-    ].some(kw => cleanedLower.includes(kw))) return 'needs';
+    if (needsMatch || ['kids', 'kid', 'children', 'child', 'daycare', 'school', 'tuition', 'babysitter'].some(kw => cleanedLower.includes(kw))) return 'needs';
 
-    if ([
-        'eating out', 'restaurant', 'chipotle', 'starbucks', 'dunkin',
-        'golf', 'shopping', 'amazon', 'target', 'walmart',
-        'xfinity', 'comcast', 'entertainment', 'gambling', 'alcohol',
-        'travel', 'video game', 'sporting event', 'vacation',
-        'activit', 'hobbie', 'book', 'subscription'
-    ].some(kw => cleanedLower.includes(kw))) return 'wants';
+    if (wantsMatch || ['chipotle', 'starbucks', 'dunkin', 'amazon', 'target', 'walmart'].some(kw => cleanedLower.includes(kw))) return 'wants';
 
     if (cleanedLower.includes('amazon') || cleanedLower.includes('starbucks') || cleanedLower.includes('uber')) return 'wants';
 
@@ -1224,6 +1408,8 @@ function attachNavigationListeners() {
     document.getElementById('settings-dark-mode').addEventListener('change', event => {
         setDarkMode(event.target.checked);
     });
+    document.getElementById('add-category-btn').addEventListener('click', addManagedCategory);
+    document.getElementById('reset-categories-btn').addEventListener('click', resetManagedCategories);
     document.getElementById('profile-shared-budget').addEventListener('change', toggleProfileSharedFields);
     document.getElementById('save-profile-btn').addEventListener('click', () => {
         const name = document.getElementById('profile-name').value.trim();
@@ -1263,11 +1449,10 @@ function calculateBreakdown(isJoeView = false) {
         if (sel) txn.category = sel.value;
     });
 
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const visibleMonths = getSelectedMonths();
-    const incomeSources = { 'Joe Paycheck': 0, 'Leah Paycheck': 0, 'Interest': 0, 'Tax Returns': 0, 'Gambling': 0, 'Gifts': 0, 'Favors': 0, 'Selling Items': 0 };
-    const needsSubcategories = { 'Mortgage': 0, 'HOA': 0, 'PSE&G': 0, 'Water Bill': 0, 'Student Loans': 0, 'Car Payment': 0, 'Car Maintenance': 0, 'Gas': 0, 'Groceries': 0, 'Home Improvement': 0, 'Healthcare': 0, 'Petcare': 0, 'Haircut': 0, 'Insurance': 0 };
-    const wantsSubcategories = { 'Eating Out': 0, 'Gifts': 0, 'Golf': 0, 'Shopping': 0, 'Xfinity': 0, 'Entertainment': 0, 'Gambling': 0, 'Alcohol': 0, 'Travel': 0, 'Video Games': 0, 'Sporting Events': 0, 'Vacation': 0, 'Activites': 0, 'Hobbies (Books)': 0, 'Subscriptions': 0 };
+    const incomeSources = createCategoryTotals('income');
+    const needsSubcategories = createCategoryTotals('needs');
+    const wantsSubcategories = createCategoryTotals('wants');
     const snapshot = buildBudgetSnapshot(currentYear, isJoeView, currentMonth);
     const yearlySnapshot = buildBudgetSnapshot(currentYear, isJoeView, 'all');
     if (!snapshot) return;
