@@ -72,12 +72,8 @@ function updateBreakdownButtonLabels() {
 
     if (!calculateButton || !toggleButton) return;
 
-    calculateButton.textContent = `Calculate ${getCurrentBreakdownLabel(isJoeViewActive)} Breakdown`;
-    toggleButton.textContent = isJoeViewActive
-        ? `Switch to ${getSharedViewLabel()}`
-        : `Switch to ${getPersonalViewLabel()}`;
-
-    toggleButton.style.display = currentProfile?.isSharedBudget ? 'inline-block' : 'none';
+    calculateButton.textContent = isJoeViewActive ? 'Single View' : 'Joint View';
+    toggleButton.style.display = 'none';
 }
 
 function updateProfileSummary() {
@@ -997,7 +993,16 @@ document.getElementById('process').addEventListener('click', function() {
 
 // Calculate listeners
 function attachCalculateListener() {
-    document.getElementById('calculate').onclick = () => calculateBreakdown(isJoeViewActive);
+    document.getElementById('calculate').onclick = () => {
+        if (currentProfile?.isSharedBudget) {
+            isJoeViewActive = !isJoeViewActive;
+        } else {
+            isJoeViewActive = false;
+        }
+
+        calculateBreakdown(isJoeViewActive);
+        updateBreakdownButtonLabels();
+    };
 }
 
 function attachViewToggleListener() {
