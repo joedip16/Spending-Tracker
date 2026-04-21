@@ -1081,6 +1081,17 @@ function getSelectedMonths() {
     return months;
 }
 
+function getYearChartMonths(year) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const today = new Date();
+
+    if (year === today.getFullYear()) {
+        return months.slice(0, today.getMonth() + 1);
+    }
+
+    return months;
+}
+
 function transactionMatchesCurrentPeriod(txn) {
     const match = String(txn.date || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (!match) return false;
@@ -1283,6 +1294,118 @@ function getSelectedManualDescription() {
     return select.value.trim();
 }
 
+function renderMonthlyCashflowBars(yearSnapshot, months) {
+    const container = document.getElementById('monthly-cashflow-bars');
+    if (!container) return;
+
+    const monthlyValues = months.map(month => {
+        const data = yearSnapshot.monthlyData[month];
+        return {
+            month,
+            income: data?.income || 0,
+            spending: (data?.needs || 0) + (data?.wants || 0),
+            net: data?.netIncome || 0
+        };
+    });
+    const maxValue = Math.max(...monthlyValues.flatMap(item => [item.income, item.spending, Math.abs(item.net)]), 1);
+
+    container.innerHTML = `
+        <div class="mini-chart-legend">
+            <span><span class="legend-swatch savings"></span>Income</span>
+            <span><span class="legend-swatch wants"></span>Spending</span>
+            <span><span class="legend-swatch needs"></span>Negative Net</span>
+        </div>
+        ${monthlyValues.map(item => {
+        const monthLabel = item.month.slice(0, 3);
+        const netClass = item.net >= 0 ? 'savings' : 'needs';
+
+        return `
+            <div class="cashflow-row">
+                <span class="cashflow-month">${monthLabel}</span>
+                <div class="cashflow-track">
+                    <div class="cashflow-bar" title="Income $${formatMoney(item.income)}">
+                        <div class="cashflow-fill savings" style="width:${Math.min(item.income / maxValue * 100, 100)}%"></div>
+                    </div>
+                    <div class="cashflow-bar" title="Spending $${formatMoney(item.spending)}">
+                        <div class="cashflow-fill wants" style="width:${Math.min(item.spending / maxValue * 100, 100)}%"></div>
+                    </div>
+                    <div class="cashflow-bar" title="Net $${formatMoney(item.net)}">
+                        <div class="cashflow-fill ${netClass}" style="width:${Math.min(Math.abs(item.net) / maxValue * 100, 100)}%"></div>
+                    </div>
+                </div>
+                <span class="cashflow-total">$${formatMoney(item.net)}</span>
+            </div>
+        `;
+    }).join('')}
+    `;
+}
+
+function renderBudgetTrendChart(yearSnapshot, months) {
+    const container = document.getElementById('budget-trend-chart');
+    if (!container) return;
+
+    const activeMonths = months.filter(month => {
+        const data = yearSnapshot.monthlyData[month];
+        return data && (data.income > 0 || data.expenses > 0);
+    });
+
+    if (activeMonths.length === 0) {
+        container.innerHTML = '<div class="trend-empty">Add transactions to see trend lines here.</div>';
+        return;
+    }
+
+    const width = 720;
+    const height = 260;
+    const padding = { top: 24, right: 26, bottom: 42, left: 42 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    const maxPercent = Math.max(
+        100,
+        ...activeMonths.flatMap(month => {
+            const data = yearSnapshot.monthlyData[month];
+            return [data.needsPercent || 0, data.wantsPercent || 0, data.netPercent || 0];
+        })
+    );
+
+    const pointFor = (month, value) => {
+        const index = activeMonths.indexOf(month);
+        const x = padding.left + (activeMonths.length === 1 ? chartWidth / 2 : index / (activeMonths.length - 1) * chartWidth);
+        const y = padding.top + chartHeight - (Math.max(value, 0) / maxPercent * chartHeight);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    };
+    const lineFor = key => activeMonths.map(month => pointFor(month, yearSnapshot.monthlyData[month][key] || 0)).join(' ');
+    const dotFor = (key, className) => activeMonths.map(month => {
+        const [cx, cy] = pointFor(month, yearSnapshot.monthlyData[month][key] || 0).split(',');
+        return `<circle class="trend-dot ${className}" cx="${cx}" cy="${cy}" r="4"></circle>`;
+    }).join('');
+
+    container.innerHTML = `
+        <svg class="trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Budget trend line chart">
+            <line class="trend-grid-line" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${padding.top + chartHeight}"></line>
+            <line class="trend-grid-line" x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${padding.left + chartWidth}" y2="${padding.top + chartHeight}"></line>
+            <line class="trend-grid-line" x1="${padding.left}" y1="${padding.top + chartHeight * 0.5}" x2="${padding.left + chartWidth}" y2="${padding.top + chartHeight * 0.5}"></line>
+            <text class="trend-label" x="8" y="${padding.top + 4}">${maxPercent.toFixed(0)}%</text>
+            <text class="trend-label" x="14" y="${padding.top + chartHeight * 0.5 + 4}">${(maxPercent / 2).toFixed(0)}%</text>
+            <text class="trend-label" x="22" y="${padding.top + chartHeight + 4}">0%</text>
+            <polyline class="trend-line needs-line" points="${lineFor('needsPercent')}"></polyline>
+            <polyline class="trend-line wants-line" points="${lineFor('wantsPercent')}"></polyline>
+            <polyline class="trend-line savings-line" points="${lineFor('netPercent')}"></polyline>
+            ${dotFor('needsPercent', 'needs')}
+            ${dotFor('wantsPercent', 'wants')}
+            ${dotFor('netPercent', 'savings')}
+            ${activeMonths.map(month => {
+                const [x] = pointFor(month, 0).split(',');
+                return `<text class="trend-label" x="${x}" y="${height - 12}" text-anchor="middle">${month.slice(0, 3)}</text>`;
+            }).join('')}
+        </svg>
+        <div class="mini-chart-legend">
+            <span><span class="legend-swatch needs"></span>Needs %</span>
+            <span><span class="legend-swatch wants"></span>Wants %</span>
+            <span><span class="legend-swatch savings"></span>Savings %</span>
+        </div>
+    `;
+}
+
 function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
     if (year === null) return null;
 
@@ -1421,11 +1544,14 @@ function renderHomeDashboard() {
     document.getElementById('home-breakdown-section').style.display = 'block';
 
     const homeYear = currentYear !== null && availableYears.includes(currentYear) ? currentYear : availableYears[0];
-    const snapshot = buildBudgetSnapshot(homeYear, false, currentMonth);
+    const snapshot = buildBudgetSnapshot(homeYear, isJoeViewActive, currentMonth);
+    const yearSnapshot = buildBudgetSnapshot(homeYear, isJoeViewActive, 'all');
     if (!snapshot) return;
+    if (!yearSnapshot) return;
 
     const periodLabel = currentMonth === 'all' ? `${homeYear}` : `${getSelectedMonths()[0]} ${homeYear}`;
-    document.getElementById('home-subtitle').textContent = `Live ${getSharedViewLabel().toLowerCase()} snapshot for ${periodLabel}.`;
+    const activeViewLabel = getCurrentBreakdownLabel(isJoeViewActive);
+    document.getElementById('home-subtitle').textContent = `Live ${activeViewLabel.toLowerCase()} snapshot for ${periodLabel}.`;
     document.getElementById('home-year-title').textContent = `${periodLabel} Snapshot`;
     document.getElementById('home-wants-percent').textContent = `${snapshot.avgWantsPct.toFixed(1)}%`;
     document.getElementById('home-needs-percent').textContent = `${snapshot.avgNeedsPct.toFixed(1)}%`;
@@ -1440,7 +1566,7 @@ function renderHomeDashboard() {
     document.getElementById('home-insight-list').innerHTML = [
         `<div class="insight-item"><strong>$${formatMoney(snapshot.avgIncome)}</strong><span>Average monthly income across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.</span></div>`,
         `<div class="insight-item"><strong>$${formatMoney(snapshot.avgNeeds + snapshot.avgWants)}</strong><span>Average monthly spending on needs and wants combined.</span></div>`,
-        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch months or years and inspect the full ${getSharedViewLabel().toLowerCase()} breakdown.</span></div>`
+        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch months or years and inspect the full ${activeViewLabel.toLowerCase()} breakdown.</span></div>`
     ].join('');
 
     const donut = document.getElementById('budget-donut');
@@ -1471,6 +1597,10 @@ function renderHomeDashboard() {
             <span class="comparison-value">${item.value.toFixed(1)}%</span>
         </div>
     `).join('');
+
+    const chartMonths = getYearChartMonths(homeYear);
+    renderMonthlyCashflowBars(yearSnapshot, chartMonths);
+    renderBudgetTrendChart(yearSnapshot, chartMonths);
 
     const strongestCategory = [
         { label: 'Needs', value: snapshot.avgNeedsPct },
@@ -2007,12 +2137,14 @@ document.getElementById('process').addEventListener('click', function() {
 function attachViewModeListeners() {
     document.getElementById('single-view-btn').addEventListener('click', () => {
         isJoeViewActive = true;
+        renderHomeDashboard();
         calculateBreakdown(isJoeViewActive);
         updateBreakdownButtonLabels();
     });
 
     document.getElementById('joint-view-btn').addEventListener('click', () => {
         isJoeViewActive = false;
+        renderHomeDashboard();
         calculateBreakdown(isJoeViewActive);
         updateBreakdownButtonLabels();
     });

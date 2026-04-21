@@ -331,6 +331,10 @@ table,
     padding: 18px;
 }
 
+.chart-card-wide {
+    grid-column: 1 / -1;
+}
+
 .chart-card h4 {
     font-size: 1.05rem;
     margin-bottom: 14px;
@@ -423,6 +427,124 @@ table,
     text-align: right;
     color: var(--muted);
     font-size: 0.92rem;
+}
+
+.monthly-cashflow-bars {
+    display: grid;
+    gap: 12px;
+}
+
+.cashflow-row {
+    display: grid;
+    grid-template-columns: 96px 1fr 88px;
+    gap: 12px;
+    align-items: center;
+}
+
+.cashflow-month {
+    font-weight: 700;
+}
+
+.cashflow-track {
+    display: grid;
+    gap: 5px;
+}
+
+.cashflow-bar {
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(122, 141, 168, 0.18);
+    overflow: hidden;
+}
+
+.cashflow-fill {
+    height: 100%;
+    border-radius: 999px;
+}
+
+.cashflow-total {
+    color: var(--muted);
+    font-size: 0.88rem;
+    text-align: right;
+}
+
+.mini-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 8px 0 14px;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.mini-chart-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.budget-trend-chart {
+    overflow-x: auto;
+}
+
+.trend-svg {
+    width: 100%;
+    min-width: 620px;
+    height: 260px;
+}
+
+.trend-grid-line {
+    stroke: rgba(122, 141, 168, 0.2);
+    stroke-width: 1;
+}
+
+.trend-line {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.trend-line.needs-line {
+    stroke: var(--needs);
+}
+
+.trend-line.wants-line {
+    stroke: var(--wants);
+}
+
+.trend-line.savings-line {
+    stroke: var(--savings);
+}
+
+.trend-label {
+    fill: var(--muted);
+    font-size: 12px;
+}
+
+.trend-dot {
+    stroke: var(--surface-strong);
+    stroke-width: 2;
+}
+
+.trend-dot.needs {
+    fill: var(--needs);
+}
+
+.trend-dot.wants {
+    fill: var(--wants);
+}
+
+.trend-dot.savings {
+    fill: var(--savings);
+}
+
+.trend-empty {
+    color: var(--muted);
+    padding: 18px;
+    border: 1px dashed var(--line);
+    border-radius: 16px;
+    text-align: center;
 }
 
 .comparison-card {
@@ -1119,8 +1241,13 @@ body.dark-mode .nav-btn.active {
     .recurring-add-form,
     .category-row,
     .recurring-row,
-    .transaction-search-panel {
+    .transaction-search-panel,
+    .cashflow-row {
         grid-template-columns: 1fr;
+    }
+
+    .cashflow-total {
+        text-align: left;
     }
 }
 
