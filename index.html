@@ -192,6 +192,26 @@
                         <option value="joint">Joint</option>
                     </select>
 
+                    <div class="manual-recurring-option">
+                        <label for="manual-recurring">
+                            <input type="checkbox" id="manual-recurring">
+                            <span>
+                                <strong>Make this transaction recurring</strong>
+                                <small>This transaction will repeat using this date, amount, category, and purchase type.</small>
+                            </span>
+                        </label>
+                        <div>
+                            <small>Frequency</small>
+                            <select id="manual-recurring-frequency" aria-label="Recurring frequency">
+                                <option value="monthly">Monthly</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="biweekly">Every 2 weeks</option>
+                                <option value="quarterly">Quarterly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div style="margin-top: 20px;">
                         <button id="save-manual">Save Transaction</button>
                         <button id="cancel-manual">Cancel</button>
@@ -278,6 +298,43 @@
 
                         <div id="category-manager-list" class="category-manager-list"></div>
                         <button id="reset-categories-btn" class="secondary-button">Reset Default Categories</button>
+                    </section>
+
+                    <section class="panel settings-card recurring-manager-card">
+                        <p class="panel-kicker">Automation</p>
+                        <h3>Recurring Transactions</h3>
+                        <p class="panel-copy">Save bills, paychecks, subscriptions, and other repeat items so the app can add them on your chosen schedule.</p>
+
+                        <div class="recurring-add-form">
+                            <input type="text" id="recurring-description" placeholder="Description, e.g., Mortgage">
+                            <input type="number" id="recurring-amount" step="0.01" placeholder="Amount">
+                            <select id="recurring-category">
+                                <option value="needs">Needs</option>
+                                <option value="wants">Wants</option>
+                                <option value="income">Income / Savings</option>
+                                <option value="uncategorized">Uncategorized</option>
+                            </select>
+                            <select id="recurring-purchase-type">
+                                <option value="single">Single</option>
+                                <option value="joint">Joint</option>
+                            </select>
+                            <select id="recurring-frequency">
+                                <option value="monthly">Monthly</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="biweekly">Every 2 weeks</option>
+                                <option value="quarterly">Quarterly</option>
+                                <option value="yearly">Yearly</option>
+                            </select>
+                            <input type="number" id="recurring-day" min="1" max="31" value="1" aria-label="Day of month">
+                            <input type="month" id="recurring-start-month" aria-label="Start month">
+                            <button id="add-recurring-btn">Add Recurring</button>
+                        </div>
+
+                        <div class="recurring-actions">
+                            <button id="apply-recurring-btn" class="secondary-button">Apply Recurring Now</button>
+                        </div>
+
+                        <div id="recurring-manager-list" class="recurring-manager-list"></div>
                     </section>
                 </div>
             </section>

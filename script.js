@@ -16,6 +16,8 @@ let currentPage = 'home';
 let currentProfile = null;
 let currentSnapshotTab = 'overview';
 let budgetCategories = null;
+let recurringTransactions = [];
+let skippedRecurringOccurrences = [];
 
 const DEFAULT_BUDGET_CATEGORIES = {
     income: [
@@ -257,6 +259,290 @@ function resetManagedCategories() {
     refreshAfterCategoryChange();
 }
 
+function getCurrentMonthInputValue() {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getCurrentDateInputValue() {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function isValidRecurringFrequency(frequency) {
+    return ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(frequency);
+}
+
+function formatRecurringFrequency(frequency) {
+    const labels = {
+        weekly: 'Weekly',
+        biweekly: 'Every 2 weeks',
+        monthly: 'Monthly',
+        quarterly: 'Quarterly',
+        yearly: 'Yearly'
+    };
+    return labels[frequency] || labels.monthly;
+}
+
+function getRecurringStartDate(item) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(item.startDate || ''))) {
+        return item.startDate;
+    }
+
+    const monthMatch = String(item.startMonth || '').match(/^(\d{4})-(\d{2})$/);
+    if (!monthMatch) return getCurrentDateInputValue();
+
+    const year = parseInt(monthMatch[1], 10);
+    const month = parseInt(monthMatch[2], 10);
+    const lastDay = new Date(year, month, 0).getDate();
+    const day = Math.min(Math.max(parseInt(item.dayOfMonth, 10) || 1, 1), lastDay);
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function loadRecurringTransactions() {
+    const savedRecurring = localStorage.getItem('recurringTransactions');
+    const savedSkipped = localStorage.getItem('skippedRecurringOccurrences');
+
+    if (savedSkipped) {
+        try {
+            skippedRecurringOccurrences = JSON.parse(savedSkipped).map(value => String(value));
+        } catch (error) {
+            skippedRecurringOccurrences = [];
+        }
+    }
+
+    if (!savedRecurring) {
+        recurringTransactions = [];
+        return;
+    }
+
+    try {
+        recurringTransactions = JSON.parse(savedRecurring)
+            .map(item => ({
+                id: String(item.id || ''),
+                description: String(item.description || '').trim(),
+                amount: Number(item.amount),
+                category: ['income', 'needs', 'wants', 'uncategorized'].includes(item.category) ? item.category : 'needs',
+                purchaseType: item.purchaseType === 'joint' ? 'joint' : 'single',
+                frequency: isValidRecurringFrequency(item.frequency) ? item.frequency : 'monthly',
+                dayOfMonth: Math.min(Math.max(parseInt(item.dayOfMonth, 10) || 1, 1), 31),
+                startMonth: /^\d{4}-\d{2}$/.test(String(item.startMonth || '')) ? item.startMonth : getCurrentMonthInputValue(),
+                startDate: getRecurringStartDate(item)
+            }))
+            .filter(item => item.id && item.description && !Number.isNaN(item.amount));
+    } catch (error) {
+        recurringTransactions = [];
+    }
+}
+
+function saveRecurringTransactions() {
+    localStorage.setItem('recurringTransactions', JSON.stringify(recurringTransactions));
+    localStorage.setItem('skippedRecurringOccurrences', JSON.stringify(skippedRecurringOccurrences));
+}
+
+function parseDateKey(dateKey) {
+    const match = String(dateKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    return new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
+}
+
+function formatDateKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function addMonthsClamped(date, monthCount, preferredDay) {
+    const targetYear = date.getFullYear();
+    const targetMonth = date.getMonth() + monthCount;
+    const firstOfTarget = new Date(targetYear, targetMonth, 1);
+    const lastDay = new Date(firstOfTarget.getFullYear(), firstOfTarget.getMonth() + 1, 0).getDate();
+    return new Date(firstOfTarget.getFullYear(), firstOfTarget.getMonth(), Math.min(preferredDay, lastDay));
+}
+
+function getRecurringOccurrenceKeys(item) {
+    const start = parseDateKey(getRecurringStartDate(item));
+    if (!start) return [];
+
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const preferredDay = Math.min(Math.max(parseInt(item.dayOfMonth, 10) || start.getDate(), 1), 31);
+    const keys = [];
+    let current = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+
+    while (current <= today) {
+        keys.push(formatDateKey(current));
+
+        if (item.frequency === 'weekly' || item.frequency === 'biweekly') {
+            current.setDate(current.getDate() + (item.frequency === 'weekly' ? 7 : 14));
+        } else {
+            const intervalMonths = item.frequency === 'quarterly' ? 3 : item.frequency === 'yearly' ? 12 : 1;
+            current = addMonthsClamped(current, intervalMonths, preferredDay);
+        }
+    }
+
+    return keys;
+}
+
+function formatRecurringDate(occurrenceKey) {
+    const date = parseDateKey(occurrenceKey);
+    if (!date) return '';
+    return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
+function getRecurringOccurrenceKeyFromDate(storedDateValue) {
+    const match = String(storedDateValue || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return '';
+    return `${match[3]}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`;
+}
+
+function getDayOfMonthFromStoredDate(storedDateValue) {
+    const match = String(storedDateValue || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    return match ? parseInt(match[2], 10) : 1;
+}
+
+function createRecurringTransaction(item, occurrenceKey) {
+    let amount = Number(item.amount);
+    if (item.category === 'income') amount = Math.abs(amount);
+    if (item.category === 'needs' || item.category === 'wants') amount = -Math.abs(amount);
+
+    let description = item.description.replace(/\s+\(joint\)$/i, '').trim();
+    if (item.purchaseType === 'joint') {
+        description = `${description} (joint)`;
+    }
+
+    return {
+        date: formatRecurringDate(occurrenceKey),
+        originalCategory: description,
+        adjustedAmount: amount,
+        category: item.category,
+        rawAmount: amount,
+        recurringId: item.id,
+        recurringOccurrence: occurrenceKey
+    };
+}
+
+function applyRecurringTransactions(showAlert = false) {
+    const existingOccurrences = new Set(
+        manualTransactions
+            .filter(txn => txn.recurringId && txn.recurringOccurrence)
+            .map(txn => `${txn.recurringId}:${txn.recurringOccurrence}`)
+    );
+    skippedRecurringOccurrences.forEach(key => existingOccurrences.add(key));
+    const generatedTransactions = [];
+
+    recurringTransactions.forEach(item => {
+        getRecurringOccurrenceKeys(item).forEach(occurrenceKey => {
+            const key = `${item.id}:${occurrenceKey}`;
+            const legacyMonthlyKey = `${item.id}:${occurrenceKey.slice(0, 7)}`;
+            if (existingOccurrences.has(key) || existingOccurrences.has(legacyMonthlyKey)) return;
+
+            generatedTransactions.push(createRecurringTransaction(item, occurrenceKey));
+            existingOccurrences.add(key);
+        });
+    });
+
+    if (generatedTransactions.length > 0) {
+        manualTransactions.unshift(...generatedTransactions);
+        saveAllTransactions();
+        updateTransactions();
+    }
+
+    renderRecurringManager();
+
+    if (showAlert) {
+        alert(generatedTransactions.length === 0
+            ? 'No new recurring transactions were due.'
+            : `Added ${generatedTransactions.length} recurring transaction${generatedTransactions.length === 1 ? '' : 's'}.`);
+    }
+
+    return generatedTransactions.length;
+}
+
+function renderRecurringManager() {
+    const container = document.getElementById('recurring-manager-list');
+    if (!container) return;
+
+    const startMonthInput = document.getElementById('recurring-start-month');
+    if (startMonthInput && !startMonthInput.value) {
+        startMonthInput.value = getCurrentMonthInputValue();
+    }
+
+    if (recurringTransactions.length === 0) {
+        container.innerHTML = '<p class="panel-copy">No recurring transactions yet. Add rent, paychecks, subscriptions, or any monthly item you want the app to remember.</p>';
+        return;
+    }
+
+    container.innerHTML = recurringTransactions.map(item => {
+        const amountLabel = item.category === 'income'
+            ? `+$${formatMoney(Math.abs(item.amount))}`
+            : `-$${formatMoney(Math.abs(item.amount))}`;
+        const occurrenceCount = manualTransactions.filter(txn => txn.recurringId === item.id).length;
+
+        return `
+            <div class="recurring-row">
+                <div>
+                    <strong>${escapeHtml(item.description)}</strong>
+                    <p>${formatCategoryType(item.category)} · ${item.purchaseType === 'joint' ? 'Joint' : 'Single'} · ${formatRecurringFrequency(item.frequency)} · Starts ${escapeHtml(getRecurringStartDate(item))}</p>
+                    <span>${occurrenceCount} generated transaction${occurrenceCount === 1 ? '' : 's'}</span>
+                </div>
+                <strong>${amountLabel}</strong>
+                <button class="delete-recurring-btn danger-button" data-id="${escapeHtml(item.id)}">Delete</button>
+            </div>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.delete-recurring-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const item = recurringTransactions.find(recurring => recurring.id === button.dataset.id);
+            if (!item) return;
+            if (!confirm(`Delete "${item.description}" from recurring transactions? Existing generated transactions will stay.`)) return;
+
+            recurringTransactions = recurringTransactions.filter(recurring => recurring.id !== item.id);
+            saveRecurringTransactions();
+            renderRecurringManager();
+        });
+    });
+}
+
+function addRecurringTransaction() {
+    const descriptionInput = document.getElementById('recurring-description');
+    const amountInput = document.getElementById('recurring-amount');
+    const category = document.getElementById('recurring-category').value;
+    const purchaseType = document.getElementById('recurring-purchase-type').value;
+    const frequency = document.getElementById('recurring-frequency').value;
+    const dayOfMonth = parseInt(document.getElementById('recurring-day').value, 10);
+    const startMonth = document.getElementById('recurring-start-month').value || getCurrentMonthInputValue();
+    const description = descriptionInput.value.trim();
+    const amount = parseFloat(amountInput.value);
+
+    if (!description || Number.isNaN(amount) || !dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31) {
+        alert('Please enter a description, amount, and day between 1 and 31.');
+        return;
+    }
+
+    recurringTransactions.push({
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        description,
+        amount,
+        category,
+        purchaseType,
+        frequency,
+        dayOfMonth,
+        startMonth,
+        startDate: getRecurringStartDate({ startMonth, dayOfMonth })
+    });
+    saveRecurringTransactions();
+
+    descriptionInput.value = '';
+    amountInput.value = '';
+    document.getElementById('recurring-category').value = 'needs';
+    document.getElementById('recurring-purchase-type').value = 'single';
+    document.getElementById('recurring-frequency').value = 'monthly';
+    document.getElementById('recurring-day').value = '1';
+    document.getElementById('recurring-start-month').value = getCurrentMonthInputValue();
+
+    applyRecurringTransactions(true);
+}
+
 function loadProfile() {
     const savedProfile = localStorage.getItem('budgetProfile');
     if (!savedProfile) {
@@ -410,6 +696,7 @@ function updateUndoRedoButtons() {
 function loadPersistedData() {
     loadProfile();
     loadBudgetCategories();
+    loadRecurringTransactions();
 
     const savedImported = localStorage.getItem('importedTransactions');
     if (savedImported) importedTransactions = JSON.parse(savedImported);
@@ -417,12 +704,15 @@ function loadPersistedData() {
     const savedManual = localStorage.getItem('manualTransactions');
     if (savedManual) manualTransactions = JSON.parse(savedManual);
 
+    applyRecurringTransactions(false);
+
     allTransactions = [...importedTransactions, ...manualTransactions];
 
     const darkMode = localStorage.getItem('darkMode') === 'true';
     setDarkMode(darkMode);
     applyProfileToUI();
     renderCategoryManager();
+    renderRecurringManager();
 
     if (allTransactions.length > 0) updateTransactions();
 
@@ -493,6 +783,8 @@ function resetManualForm() {
     document.getElementById('manual-amount').value = '';
     document.getElementById('manual-category').value = 'income';
     document.getElementById('manual-purchase-type').value = 'single';
+    document.getElementById('manual-recurring').checked = false;
+    document.getElementById('manual-recurring-frequency').value = 'monthly';
 }
 
 // Rebuild allTransactions and refresh UI
@@ -1006,6 +1298,13 @@ function deleteTransaction(index) {
     saveState("Delete transaction");
 
     const txn = allTransactions[index];
+    if (txn.recurringId && txn.recurringOccurrence) {
+        const skippedKey = `${txn.recurringId}:${txn.recurringOccurrence}`;
+        if (!skippedRecurringOccurrences.includes(skippedKey)) {
+            skippedRecurringOccurrences.push(skippedKey);
+            saveRecurringTransactions();
+        }
+    }
 
     const importedIdx = importedTransactions.findIndex(t => 
         t.date === txn.date && t.originalCategory === txn.originalCategory && t.adjustedAmount === txn.adjustedAmount
@@ -1246,6 +1545,8 @@ document.getElementById('save-manual').addEventListener('click', () => {
     const amountStr = document.getElementById('manual-amount').value.trim();
     const category = document.getElementById('manual-category').value;
     const purchaseType = document.getElementById('manual-purchase-type').value;
+    const makeRecurring = document.getElementById('manual-recurring').checked;
+    const recurringFrequency = document.getElementById('manual-recurring-frequency').value;
 
     if (!date || !desc || !amountStr || !category || !purchaseType) {
         alert('Please fill all fields.');
@@ -1260,6 +1561,26 @@ document.getElementById('save-manual').addEventListener('click', () => {
     saveState("Add manual transaction");
 
     let finalDescription = desc.replace(/\s+\(joint\)$/i, '').trim();
+    let recurringId = null;
+    let recurringOccurrence = null;
+
+    if (makeRecurring) {
+        recurringId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        recurringOccurrence = getRecurringOccurrenceKeyFromDate(date);
+        recurringTransactions.push({
+            id: recurringId,
+            description: finalDescription,
+            amount,
+            category,
+            purchaseType,
+            frequency: recurringFrequency,
+            dayOfMonth: getDayOfMonthFromStoredDate(date),
+            startMonth: recurringOccurrence.slice(0, 7),
+            startDate: formatDateForInput(date)
+        });
+        saveRecurringTransactions();
+    }
+
     if (purchaseType === 'joint') {
         finalDescription = `${finalDescription} (joint)`;
     }
@@ -1271,9 +1592,15 @@ document.getElementById('save-manual').addEventListener('click', () => {
         category,               // Use the selected category
         rawAmount: amount
     };
+    if (makeRecurring) {
+        newTxn.recurringId = recurringId;
+        newTxn.recurringOccurrence = recurringOccurrence;
+    }
+
     manualTransactions.unshift(newTxn);
     saveAllTransactions();
     updateTransactions();
+    if (makeRecurring) applyRecurringTransactions(false);
     resetManualForm();
 });
 
@@ -1410,6 +1737,8 @@ function attachNavigationListeners() {
     });
     document.getElementById('add-category-btn').addEventListener('click', addManagedCategory);
     document.getElementById('reset-categories-btn').addEventListener('click', resetManagedCategories);
+    document.getElementById('add-recurring-btn').addEventListener('click', addRecurringTransaction);
+    document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
     document.getElementById('profile-shared-budget').addEventListener('change', toggleProfileSharedFields);
     document.getElementById('save-profile-btn').addEventListener('click', () => {
         const name = document.getElementById('profile-name').value.trim();
