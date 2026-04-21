@@ -19,6 +19,10 @@ let budgetCategories = null;
 let recurringTransactions = [];
 let skippedRecurringOccurrences = [];
 let budgetGoals = null;
+let pendingImportRows = [];
+let pendingImportHeaders = [];
+let pendingImportFileName = '';
+let pendingImportTransactions = [];
 
 const DEFAULT_BUDGET_GOALS = {
     needs: 50,
@@ -1948,6 +1952,219 @@ function excelSerialToDate(serial) {
     return `${month}/${day}/${year}`;
 }
 
+function normalizeImportedDate(rawDate) {
+    if (typeof rawDate === 'number') return excelSerialToDate(rawDate);
+
+    const date = String(rawDate || '').trim();
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) return date;
+
+    const inputDate = formatDateForStorage(date);
+    return inputDate || null;
+}
+
+function transactionKey(txn) {
+    return [
+        String(txn.date || '').trim(),
+        getBaseDescription(txn.originalCategory).toLowerCase(),
+        Number(txn.adjustedAmount || 0).toFixed(2)
+    ].join('|');
+}
+
+function isDuplicateImport(txn) {
+    const key = transactionKey(txn);
+    return allTransactions.some(existing => transactionKey(existing) === key);
+}
+
+function buildImportPreviewRows(dateCol, descriptionCol, amountCol) {
+    const previewRows = [];
+
+    for (let i = 1; i < pendingImportRows.length; i++) {
+        const rawDate = pendingImportRows[i][dateCol];
+        const date = normalizeImportedDate(rawDate);
+        if (!date) continue;
+
+        const originalCategory = String(pendingImportRows[i][descriptionCol] || '').trim();
+        const amount = parseFloat(pendingImportRows[i][amountCol]) || 0;
+        if (!originalCategory && amount === 0) continue;
+
+        const cleanedCategory = originalCategory.replace(/\s*\(.*\)/g, '').trim();
+        const category = categorizeTransaction(cleanedCategory, originalCategory, amount);
+        const purchaseType = /\(joint\)$/i.test(originalCategory) ? 'joint' : 'single';
+        const transaction = {
+            date,
+            originalCategory,
+            adjustedAmount: amount,
+            category,
+            rawAmount: amount
+        };
+
+        previewRows.push({
+            ...transaction,
+            purchaseType,
+            duplicate: isDuplicateImport(transaction),
+            selected: !isDuplicateImport(transaction)
+        });
+    }
+
+    return previewRows;
+}
+
+function populateImportColumnSelectors(defaults) {
+    const selectors = {
+        date: document.getElementById('preview-date-column'),
+        description: document.getElementById('preview-description-column'),
+        amount: document.getElementById('preview-amount-column')
+    };
+
+    Object.values(selectors).forEach(select => {
+        select.innerHTML = '';
+        pendingImportHeaders.forEach((header, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = header || `Column ${index + 1}`;
+            select.appendChild(option);
+        });
+    });
+
+    selectors.date.value = String(defaults.dateCol);
+    selectors.description.value = String(defaults.descriptionCol);
+    selectors.amount.value = String(defaults.amountCol);
+}
+
+function getImportColumnSelection() {
+    return {
+        dateCol: parseInt(document.getElementById('preview-date-column').value, 10),
+        descriptionCol: parseInt(document.getElementById('preview-description-column').value, 10),
+        amountCol: parseInt(document.getElementById('preview-amount-column').value, 10)
+    };
+}
+
+function renderImportPreview() {
+    const { dateCol, descriptionCol, amountCol } = getImportColumnSelection();
+    pendingImportTransactions = buildImportPreviewRows(dateCol, descriptionCol, amountCol);
+
+    const tbody = document.querySelector('#import-preview-table tbody');
+    updateImportPreviewSummary();
+
+    if (pendingImportTransactions.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No valid transactions found with the selected columns.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = pendingImportTransactions.map((txn, index) => `
+        <tr>
+            <td><input type="checkbox" class="preview-include" data-index="${index}" ${txn.selected ? 'checked' : ''}></td>
+            <td>${txn.duplicate ? '<span class="duplicate-pill">Duplicate?</span>' : '<span class="ready-pill">Ready</span>'}</td>
+            <td>${txn.date}</td>
+            <td>${escapeHtml(getBaseDescription(txn.originalCategory))}</td>
+            <td>${getAmountDisplay(txn.adjustedAmount).text}</td>
+            <td>
+                <select class="preview-category import-preview-select" data-index="${index}">
+                    <option value="income" ${txn.category === 'income' ? 'selected' : ''}>Income / Savings</option>
+                    <option value="needs" ${txn.category === 'needs' ? 'selected' : ''}>Needs</option>
+                    <option value="wants" ${txn.category === 'wants' ? 'selected' : ''}>Wants</option>
+                    <option value="uncategorized" ${txn.category === 'uncategorized' ? 'selected' : ''}>Uncategorized</option>
+                </select>
+            </td>
+            <td>
+                <select class="preview-type import-preview-select" data-index="${index}">
+                    <option value="single" ${txn.purchaseType === 'single' ? 'selected' : ''}>Single</option>
+                    <option value="joint" ${txn.purchaseType === 'joint' ? 'selected' : ''}>Joint</option>
+                </select>
+            </td>
+        </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.preview-include').forEach(input => {
+        input.addEventListener('change', () => {
+            pendingImportTransactions[parseInt(input.dataset.index, 10)].selected = input.checked;
+            updateImportPreviewSummary();
+        });
+    });
+    tbody.querySelectorAll('.preview-category').forEach(select => {
+        select.addEventListener('change', () => {
+            pendingImportTransactions[parseInt(select.dataset.index, 10)].category = select.value;
+        });
+    });
+    tbody.querySelectorAll('.preview-type').forEach(select => {
+        select.addEventListener('change', () => {
+            pendingImportTransactions[parseInt(select.dataset.index, 10)].purchaseType = select.value;
+        });
+    });
+}
+
+function updateImportPreviewSummary() {
+    const duplicateCount = pendingImportTransactions.filter(txn => txn.duplicate).length;
+    const selectedCount = pendingImportTransactions.filter(txn => txn.selected).length;
+    const summary = document.getElementById('import-preview-summary');
+    if (!summary) return;
+
+    summary.textContent = `${pendingImportFileName}: ${pendingImportTransactions.length} valid row${pendingImportTransactions.length === 1 ? '' : 's'}, ${duplicateCount} likely duplicate${duplicateCount === 1 ? '' : 's'}, ${selectedCount} selected to import.`;
+}
+
+function openImportPreview(rows, fileName) {
+    if (!rows.length) throw new Error('No rows found in the selected file.');
+
+    pendingImportRows = rows;
+    pendingImportFileName = fileName;
+    pendingImportHeaders = rows[0].map((header, index) => String(header || `Column ${index + 1}`).trim());
+
+    const headers = pendingImportHeaders.map(header => header.toLowerCase());
+    const dateCol = headers.findIndex(header => header.includes('date'));
+    const descriptionCol = headers.findIndex(header => header.includes('category') || header.includes('description') || header.includes('memo'));
+    const amountCol = headers.findIndex(header => header.includes('amount'));
+
+    if (dateCol === -1 || descriptionCol === -1 || amountCol === -1) {
+        throw new Error('Required columns not found. Please include date, description/category, and amount columns.');
+    }
+
+    populateImportColumnSelectors({ dateCol, descriptionCol, amountCol });
+    renderImportPreview();
+    document.getElementById('import-preview-section').style.display = 'block';
+    document.getElementById('import-preview-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelImportPreview() {
+    pendingImportRows = [];
+    pendingImportHeaders = [];
+    pendingImportFileName = '';
+    pendingImportTransactions = [];
+    document.getElementById('import-preview-section').style.display = 'none';
+    document.getElementById('upload').value = '';
+}
+
+function confirmImportPreview() {
+    const selectedTransactions = pendingImportTransactions
+        .filter(txn => txn.selected)
+        .map(txn => {
+            const baseDescription = getBaseDescription(txn.originalCategory);
+            const finalDescription = txn.purchaseType === 'joint' ? `${baseDescription} (joint)` : baseDescription;
+            return {
+                date: txn.date,
+                originalCategory: finalDescription,
+                adjustedAmount: txn.adjustedAmount,
+                category: txn.category,
+                rawAmount: txn.rawAmount
+            };
+        });
+
+    if (selectedTransactions.length === 0) {
+        alert('Please select at least one transaction to import.');
+        return;
+    }
+
+    saveState("Import preview");
+    isJoeViewActive = false;
+    resetCalculatedOutput();
+    importedTransactions = selectedTransactions;
+    saveAllTransactions();
+    updateTransactions();
+    updateBreakdownButtonLabels();
+    cancelImportPreview();
+    switchPage('transactions');
+    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+}
+
 // Format money
 function formatMoney(value) {
     return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2365,53 +2582,8 @@ document.getElementById('process').addEventListener('click', function() {
             const worksheet = workbook.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
 
-            const headers = rows[0].map(h => String(h || '').toLowerCase().trim());
-            const dateCol = headers.findIndex(h => h.includes('date'));
-            const categoryCol = headers.findIndex(h => h.includes('category') || h.includes('description') || h.includes('memo'));
-            const amountCol = headers.findIndex(h => h.includes('amount'));
-
-            if (dateCol === -1 || categoryCol === -1 || amountCol === -1) {
-                throw new Error('Required columns not found.');
-            }
-
-            const newImported = [];
-
-            for (let i = 1; i < rows.length; i++) {
-                let rawDate = rows[i][dateCol];
-                let date = null;
-
-                if (typeof rawDate === 'number') {
-                    date = excelSerialToDate(rawDate);
-                } else {
-                    date = String(rawDate || '').trim();
-                    if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) continue;
-                }
-
-                const originalCategory = String(rows[i][categoryCol] || '').trim();
-                const amount = parseFloat(rows[i][amountCol]) || 0;
-                const cleanedCategory = originalCategory.replace(/\s*\(.*\)/g, '').trim();
-                const category = categorizeTransaction(cleanedCategory, originalCategory, amount);
-
-                newImported.push({
-                    date,
-                    originalCategory,
-                    adjustedAmount: amount,
-                    category,
-                    rawAmount: amount
-                });
-            }
-
-            saveState("Import file");
-            isJoeViewActive = false;
-            resetCalculatedOutput();
-            importedTransactions = newImported;
-            saveAllTransactions();
-            updateTransactions();
-
             document.getElementById('loading').style.display = 'none';
-            updateBreakdownButtonLabels();
-            switchPage('transactions');
-            document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+            openImportPreview(rows, file.name);
 
         } catch (err) {
             document.getElementById('loading').style.display = 'none';
@@ -2425,6 +2597,10 @@ document.getElementById('process').addEventListener('click', function() {
         reader.readAsBinaryString(file);
     }
 });
+
+document.getElementById('refresh-import-preview').addEventListener('click', renderImportPreview);
+document.getElementById('confirm-import-preview').addEventListener('click', confirmImportPreview);
+document.getElementById('cancel-import-preview').addEventListener('click', cancelImportPreview);
 
 // Calculate listeners
 function attachViewModeListeners() {

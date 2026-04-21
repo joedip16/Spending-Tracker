@@ -170,6 +170,51 @@
                     </div>
                 </div>
 
+                <div id="import-preview-section" class="panel import-preview-section" style="display:none;">
+                    <div class="panel-header">
+                        <div>
+                            <p class="panel-kicker">Import Preview</p>
+                            <h3>Review before importing</h3>
+                            <p id="import-preview-summary" class="panel-copy">Confirm columns, categories, duplicates, and transaction types before saving.</p>
+                        </div>
+                    </div>
+
+                    <div class="import-column-controls">
+                        <label for="preview-date-column">Date column
+                            <select id="preview-date-column"></select>
+                        </label>
+                        <label for="preview-description-column">Description column
+                            <select id="preview-description-column"></select>
+                        </label>
+                        <label for="preview-amount-column">Amount column
+                            <select id="preview-amount-column"></select>
+                        </label>
+                        <button id="refresh-import-preview" class="secondary-button">Refresh Preview</button>
+                    </div>
+
+                    <div class="import-preview-actions">
+                        <button id="confirm-import-preview">Import Selected</button>
+                        <button id="cancel-import-preview" class="secondary-button">Cancel Import</button>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table id="import-preview-table">
+                            <thead>
+                                <tr>
+                                    <th>Import</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Category</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div id="manual-form" style="display:none; background:white; padding:20px; border-radius:12px; margin:20px 0; box-shadow:0 8px 25px rgba(0,0,0,0.1);">
                     <h3>Add New Transaction</h3>
                     <p class="form-helper">Choose the category here, then add the date, description, and amount.</p>
