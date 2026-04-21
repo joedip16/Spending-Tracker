@@ -23,6 +23,17 @@
                     <p id="home-subtitle" class="hero-copy">Add transactions to see your current wants, needs, and savings percentages.</p>
                 </div>
 
+                <div class="breakdown-controls home-top-controls">
+                    <label for="year-select">Year:</label>
+                    <select id="year-select"></select>
+                    <label for="month-select">Month:</label>
+                    <select id="month-select"></select>
+                    <div class="view-mode-buttons">
+                        <button id="single-view-btn" class="view-mode-btn active">Single View</button>
+                        <button id="joint-view-btn" class="view-mode-btn">Joint View</button>
+                    </div>
+                </div>
+
                 <div id="home-empty" class="empty-state" style="display:none;">
                     <h3>No transactions yet</h3>
                     <p>Import a CSV/Excel file or add a transaction on the Transactions tab to start tracking your budget.</p>
@@ -115,15 +126,6 @@
                     </div>
 
                     <section id="home-breakdown-section" class="panel home-breakdown-panel" style="display:none;">
-                        <div class="breakdown-controls">
-                            <label for="year-select">Year:</label>
-                            <select id="year-select"></select>
-                            <label for="month-select">Month:</label>
-                            <select id="month-select"></select>
-                            <button id="calculate">Calculate Breakdown</button>
-                            <button id="view-toggle">Switch View</button>
-                        </div>
-
                         <div id="monthly-breakdown"></div>
 
                         <div id="totals">

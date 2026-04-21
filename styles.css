@@ -224,6 +224,36 @@ table,
     margin-top: 20px;
 }
 
+.home-top-controls {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    border-radius: 24px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.view-mode-buttons {
+    display: inline-flex;
+    gap: 8px;
+    background: rgba(47, 111, 237, 0.08);
+    border: 1px solid rgba(47, 111, 237, 0.14);
+    border-radius: 16px;
+    padding: 6px;
+}
+
+.view-mode-btn {
+    background: transparent;
+    color: var(--blue-deep);
+    box-shadow: none;
+    padding: 10px 14px;
+}
+
+.view-mode-btn.active {
+    background: var(--blue);
+    color: white;
+}
+
 .panel {
     padding: 24px;
 }

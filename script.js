@@ -68,13 +68,14 @@ function getCurrentBreakdownLabel(isPersonalView) {
 }
 
 function updateBreakdownButtonLabels() {
-    const calculateButton = document.getElementById('calculate');
-    const toggleButton = document.getElementById('view-toggle');
+    const singleButton = document.getElementById('single-view-btn');
+    const jointButton = document.getElementById('joint-view-btn');
 
-    if (!calculateButton || !toggleButton) return;
+    if (!singleButton || !jointButton) return;
 
-    calculateButton.textContent = isJoeViewActive ? 'Single View' : 'Joint View';
-    toggleButton.style.display = 'none';
+    singleButton.classList.toggle('active', isJoeViewActive);
+    jointButton.classList.toggle('active', !isJoeViewActive);
+    jointButton.style.display = currentProfile?.isSharedBudget ? 'inline-block' : 'none';
 }
 
 function updateProfileSummary() {
@@ -283,7 +284,7 @@ function updateTransactions() {
 }
 
 function getSelectedMonths() {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     if (currentMonth !== 'all') {
         return [months[parseInt(currentMonth, 10) - 1]];
     }
@@ -452,7 +453,7 @@ function getSelectedManualDescription() {
 function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
     if (year === null) return null;
 
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const incomeSources = { 'Joe Paycheck': 0, 'Leah Paycheck': 0, 'Interest': 0, 'Tax Returns': 0, 'Gambling': 0, 'Gifts': 0, 'Favors': 0, 'Selling Items': 0 };
     const needsSubcategories = { 'Mortgage': 0, 'HOA': 0, 'PSE&G': 0, 'Water Bill': 0, 'Student Loans': 0, 'Car Payment': 0, 'Car Maintenance': 0, 'Gas': 0, 'Groceries': 0, 'Home Improvement': 0, 'Healthcare': 0, 'Petcare': 0, 'Haircut': 0, 'Insurance': 0 };
     const wantsSubcategories = { 'Eating Out': 0, 'Gifts': 0, 'Golf': 0, 'Shopping': 0, 'Xfinity': 0, 'Entertainment': 0, 'Gambling': 0, 'Alcohol': 0, 'Travel': 0, 'Video Games': 0, 'Sporting Events': 0, 'Vacation': 0, 'Activites': 0, 'Hobbies (Books)': 0, 'Subscriptions': 0 };
@@ -949,7 +950,7 @@ function populateYearSelector() {
 
 function populateMonthSelector() {
     const select = document.getElementById('month-select');
-    const months = ['All Months', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = ['All Months', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     select.innerHTML = '';
     select.onchange = null;
 
@@ -977,7 +978,7 @@ function populateMonthSelector() {
 function populateTransactionPeriodSelectors() {
     const yearSelect = document.getElementById('transaction-year-select');
     const monthSelect = document.getElementById('transaction-month-select');
-    const months = ['All Months', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = ['All Months', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
     yearSelect.innerHTML = '';
     yearSelect.onchange = null;
@@ -1176,26 +1177,18 @@ document.getElementById('process').addEventListener('click', function() {
 });
 
 // Calculate listeners
-function attachCalculateListener() {
-    document.getElementById('calculate').onclick = () => {
-        if (currentProfile?.isSharedBudget) {
-            isJoeViewActive = !isJoeViewActive;
-        } else {
-            isJoeViewActive = false;
-        }
-
+function attachViewModeListeners() {
+    document.getElementById('single-view-btn').addEventListener('click', () => {
+        isJoeViewActive = true;
         calculateBreakdown(isJoeViewActive);
         updateBreakdownButtonLabels();
-    };
-}
+    });
 
-function attachViewToggleListener() {
-    const toggle = document.getElementById('view-toggle');
-    toggle.onclick = () => {
-        isJoeViewActive = !isJoeViewActive;
+    document.getElementById('joint-view-btn').addEventListener('click', () => {
+        isJoeViewActive = false;
         calculateBreakdown(isJoeViewActive);
         updateBreakdownButtonLabels();
-    };
+    });
 }
 
 function switchPage(page) {
@@ -1270,13 +1263,15 @@ function calculateBreakdown(isJoeView = false) {
         if (sel) txn.category = sel.value;
     });
 
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const visibleMonths = getSelectedMonths();
     const incomeSources = { 'Joe Paycheck': 0, 'Leah Paycheck': 0, 'Interest': 0, 'Tax Returns': 0, 'Gambling': 0, 'Gifts': 0, 'Favors': 0, 'Selling Items': 0 };
     const needsSubcategories = { 'Mortgage': 0, 'HOA': 0, 'PSE&G': 0, 'Water Bill': 0, 'Student Loans': 0, 'Car Payment': 0, 'Car Maintenance': 0, 'Gas': 0, 'Groceries': 0, 'Home Improvement': 0, 'Healthcare': 0, 'Petcare': 0, 'Haircut': 0, 'Insurance': 0 };
     const wantsSubcategories = { 'Eating Out': 0, 'Gifts': 0, 'Golf': 0, 'Shopping': 0, 'Xfinity': 0, 'Entertainment': 0, 'Gambling': 0, 'Alcohol': 0, 'Travel': 0, 'Video Games': 0, 'Sporting Events': 0, 'Vacation': 0, 'Activites': 0, 'Hobbies (Books)': 0, 'Subscriptions': 0 };
     const snapshot = buildBudgetSnapshot(currentYear, isJoeView, currentMonth);
+    const yearlySnapshot = buildBudgetSnapshot(currentYear, isJoeView, 'all');
     if (!snapshot) return;
+    if (!yearlySnapshot) return;
 
     monthlyData = snapshot.monthlyData;
     totalIncomeSources = snapshot.totals.incomeSources;
@@ -1294,6 +1289,21 @@ function calculateBreakdown(isJoeView = false) {
     const avgNetPercent = snapshot.avgNetPercent;
     const avgNeedsPct = snapshot.avgNeedsPct;
     const avgWantsPct = snapshot.avgWantsPct;
+    const yearlyNumMonths = yearlySnapshot.numMonths;
+    const yearlyIncomeSources = yearlySnapshot.totals.incomeSources;
+    const yearlyNeedsSubcategories = yearlySnapshot.totals.needsSubcategories;
+    const yearlyWantsSubcategories = yearlySnapshot.totals.wantsSubcategories;
+    const yearlyTotalIncome = yearlySnapshot.totals.income;
+    const yearlyTotalNeeds = yearlySnapshot.totals.needs;
+    const yearlyTotalWants = yearlySnapshot.totals.wants;
+    const yearlyTotalExpenses = yearlySnapshot.totals.expenses;
+    const yearlyAvgIncome = yearlySnapshot.avgIncome;
+    const yearlyAvgNeeds = yearlySnapshot.avgNeeds;
+    const yearlyAvgWants = yearlySnapshot.avgWants;
+    const yearlyAvgNet = yearlySnapshot.avgNet;
+    const yearlyAvgNeedsPct = yearlySnapshot.avgNeedsPct;
+    const yearlyAvgWantsPct = yearlySnapshot.avgWantsPct;
+    const yearlyAvgNetPercent = yearlySnapshot.avgNetPercent;
 
     function colorPercent(value, threshold, goodBelow = true) {
         if (value === 0) return value.toFixed(1);
@@ -1315,7 +1325,7 @@ function calculateBreakdown(isJoeView = false) {
 
     let tableHTML = `<h2>${title}</h2><div class="table-wrapper"><table><thead><tr><th>Category</th>`;
     visibleMonths.forEach(m => tableHTML += `<th>${m}</th>`);
-    tableHTML += '<th>Average</th><th>Total</th></tr></thead><tbody>';
+    tableHTML += '<th>Yearly Average</th><th>Yearly Total</th></tr></thead><tbody>';
 
     const addGroup = label => tableHTML += `<tr class="category-group"><td colspan="${visibleMonths.length + 3}">${label}</td></tr>`;
 
@@ -1324,11 +1334,11 @@ function calculateBreakdown(isJoeView = false) {
         activeIncomeSources.forEach(src => {
             tableHTML += `<tr><td>${src}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].incomeSources[src])}</td>`);
-            tableHTML += `<td>$${formatMoney(totalIncomeSources[src] / numMonths)}</td><td>$${formatMoney(totalIncomeSources[src])}</td></tr>`;
+            tableHTML += `<td>$${formatMoney(yearlyIncomeSources[src] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyIncomeSources[src])}</td></tr>`;
         });
         tableHTML += `<tr class="category-group"><td>Total Income</td>`;
         visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].income)}</td>`);
-        tableHTML += `<td>$${formatMoney(avgIncome)}</td><td>$${formatMoney(totalIncome)}</td></tr>`;
+        tableHTML += `<td>$${formatMoney(yearlyAvgIncome)}</td><td>$${formatMoney(yearlyTotalIncome)}</td></tr>`;
     }
 
     if (activeNeedsSubcategories.length > 0 || totalNeeds !== 0) {
@@ -1336,11 +1346,11 @@ function calculateBreakdown(isJoeView = false) {
         activeNeedsSubcategories.forEach(sub => {
             tableHTML += `<tr><td>${sub}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needsSubcategories[sub])}</td>`);
-            tableHTML += `<td>$${formatMoney(totalNeedsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalNeedsSubcategories[sub])}</td></tr>`;
+            tableHTML += `<td>$${formatMoney(yearlyNeedsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyNeedsSubcategories[sub])}</td></tr>`;
         });
         tableHTML += `<tr class="category-group"><td>Total Needs</td>`;
         visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(monthlyData[m].needsPercent, 50, true)})</td>`);
-        tableHTML += `<td>$${formatMoney(avgNeeds)} (${colorPercent(avgNeedsPct, 50, true)})</td><td>$${formatMoney(totalNeeds)}</td></tr>`;
+        tableHTML += `<td>$${formatMoney(yearlyAvgNeeds)} (${colorPercent(yearlyAvgNeedsPct, 50, true)})</td><td>$${formatMoney(yearlyTotalNeeds)}</td></tr>`;
     }
 
     if (activeWantsSubcategories.length > 0 || totalWants !== 0) {
@@ -1348,23 +1358,23 @@ function calculateBreakdown(isJoeView = false) {
         activeWantsSubcategories.forEach(sub => {
             tableHTML += `<tr><td>${sub}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wantsSubcategories[sub])}</td>`);
-            tableHTML += `<td>$${formatMoney(totalWantsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalWantsSubcategories[sub])}</td></tr>`;
+            tableHTML += `<td>$${formatMoney(yearlyWantsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyWantsSubcategories[sub])}</td></tr>`;
         });
         tableHTML += `<tr class="category-group"><td>Total Wants</td>`;
         visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(monthlyData[m].wantsPercent, 30, true)})</td>`);
-        tableHTML += `<td>$${formatMoney(avgWants)} (${colorPercent(avgWantsPct, 30, true)})</td><td>$${formatMoney(totalWants)}</td></tr>`;
+        tableHTML += `<td>$${formatMoney(yearlyAvgWants)} (${colorPercent(yearlyAvgWantsPct, 30, true)})</td><td>$${formatMoney(yearlyTotalWants)}</td></tr>`;
     }
 
     if (totalExpenses !== 0) {
         tableHTML += `<tr class="category-group"><td>Total Expenses</td>`;
         visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].expenses)}</td>`);
-        tableHTML += `<td>$${formatMoney(avgNeeds + avgWants)}</td><td>$${formatMoney(totalExpenses)}</td></tr>`;
+        tableHTML += `<td>$${formatMoney(yearlyAvgNeeds + yearlyAvgWants)}</td><td>$${formatMoney(yearlyTotalExpenses)}</td></tr>`;
     }
 
     if (totalIncome !== 0 || totalExpenses !== 0) {
         tableHTML += `<tr class="category-group"><td>Net Income</td>`;
         visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].netIncome)} (${colorPercent(monthlyData[m].netPercent, 20, false)})</td>`);
-        tableHTML += `<td>$${formatMoney(avgIncome - (avgNeeds + avgWants))} (${colorPercent(avgNetPercent, 20, false)})</td><td>$${formatMoney(totalIncome - totalExpenses)}</td></tr>`;
+        tableHTML += `<td>$${formatMoney(yearlyAvgNet)} (${colorPercent(yearlyAvgNetPercent, 20, false)})</td><td>$${formatMoney(yearlyTotalIncome - yearlyTotalExpenses)}</td></tr>`;
     }
 
     tableHTML += '</tbody></table></div>';
@@ -1387,9 +1397,6 @@ function calculateBreakdown(isJoeView = false) {
 
     document.getElementById('home-breakdown-section').style.display = 'block';
     document.getElementById('export').style.display = 'block';
-    if (currentPage === 'home') {
-        document.getElementById('monthly-breakdown').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
 }
 
 // Export
@@ -1422,8 +1429,7 @@ document.getElementById('export').addEventListener('click', function() {
 window.addEventListener('load', () => {
     loadPersistedData();
     attachNavigationListeners();
-    attachCalculateListener();
-    attachViewToggleListener();
+    attachViewModeListeners();
     renderHomeDashboard();
     switchPage('home');
     if (!hasCompletedProfile()) openProfileModal(true);
