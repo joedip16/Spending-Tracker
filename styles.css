@@ -479,7 +479,8 @@ table,
 }
 
 .category-manager-card,
-.recurring-manager-card {
+.recurring-manager-card,
+.backup-card {
     grid-column: 1 / -1;
 }
 
@@ -565,6 +566,54 @@ table,
 .recurring-actions {
     display: flex;
     justify-content: flex-end;
+}
+
+.backup-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.backup-import-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(47, 111, 237, 0.08);
+    color: var(--blue-deep);
+    border: 1px solid rgba(47, 111, 237, 0.14);
+    border-radius: 14px;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.backup-format-label {
+    display: inline-grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.backup-format-label select {
+    min-width: 120px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.backup-import-label input {
+    display: none;
+}
+
+.backup-status {
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 0.95rem;
 }
 
 .category-row button,
@@ -1012,6 +1061,7 @@ body.dark-mode .category-add-form select,
 body.dark-mode .recurring-add-form input,
 body.dark-mode .recurring-add-form select,
 body.dark-mode .manual-recurring-option select,
+body.dark-mode .backup-format-label select,
 body.dark-mode .category-row input {
     background: rgba(9, 19, 31, 0.76);
     color: var(--text);

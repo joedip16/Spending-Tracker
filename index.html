@@ -336,6 +336,29 @@
 
                         <div id="recurring-manager-list" class="recurring-manager-list"></div>
                     </section>
+
+                    <section class="panel settings-card backup-card">
+                        <p class="panel-kicker">Safety Net</p>
+                        <h3>Data Backup</h3>
+                        <p class="panel-copy">Download a full backup of your profile, transactions, categories, recurring rules, and preferences. Choose CSV or JSON, then restore it later on this browser or another device.</p>
+
+                        <div class="backup-actions">
+                            <label class="backup-format-label" for="backup-format">
+                                Format
+                                <select id="backup-format">
+                                    <option value="csv">CSV</option>
+                                    <option value="json">JSON</option>
+                                </select>
+                            </label>
+                            <button id="export-backup-btn">Export Backup</button>
+                            <label class="backup-import-label" for="import-backup-file">
+                                Import Backup
+                                <input type="file" id="import-backup-file" accept=".csv,.json,text/csv,application/json">
+                            </label>
+                        </div>
+
+                        <p id="backup-status" class="backup-status">No backup action yet.</p>
+                    </section>
                 </div>
             </section>
         </main>

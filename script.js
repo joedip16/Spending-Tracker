@@ -543,6 +543,265 @@ function addRecurringTransaction() {
     applyRecurringTransactions(true);
 }
 
+function setBackupStatus(message) {
+    const status = document.getElementById('backup-status');
+    if (status) status.textContent = message;
+}
+
+function buildBackupPayload() {
+    return {
+        appName: '50:40:30 Budget Tracker',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: {
+            profile: currentProfile || getDefaultProfile(),
+            darkMode: document.body.classList.contains('dark-mode'),
+            importedTransactions,
+            manualTransactions,
+            budgetCategories: normalizeBudgetCategories(budgetCategories),
+            recurringTransactions,
+            skippedRecurringOccurrences,
+            currentSnapshotTab
+        }
+    };
+}
+
+function csvEscape(value) {
+    const text = value === undefined || value === null ? '' : String(value);
+    if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+    return text;
+}
+
+function rowsToCsv(rows) {
+    return rows.map(row => row.map(csvEscape).join(',')).join('\n');
+}
+
+function parseCsvRows(csvText) {
+    const rows = [];
+    let row = [];
+    let value = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < csvText.length; i++) {
+        const char = csvText[i];
+        const nextChar = csvText[i + 1];
+
+        if (char === '"' && inQuotes && nextChar === '"') {
+            value += '"';
+            i++;
+        } else if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            row.push(value);
+            value = '';
+        } else if ((char === '\n' || char === '\r') && !inQuotes) {
+            if (char === '\r' && nextChar === '\n') i++;
+            row.push(value);
+            rows.push(row);
+            row = [];
+            value = '';
+        } else {
+            value += char;
+        }
+    }
+
+    if (value || row.length > 0) {
+        row.push(value);
+        rows.push(row);
+    }
+
+    return rows.filter(currentRow => currentRow.some(cell => String(cell).trim() !== ''));
+}
+
+function buildBackupCsv(payload) {
+    const data = payload.data;
+    const rows = [
+        ['section', 'field1', 'field2', 'field3', 'field4', 'field5', 'field6', 'field7', 'field8', 'field9'],
+        ['backupInfo', 'appName', payload.appName],
+        ['backupInfo', 'version', payload.version],
+        ['backupInfo', 'exportedAt', payload.exportedAt],
+        ['profile', 'name', 'isSharedBudget', 'householdName'],
+        ['profile', data.profile.name || '', data.profile.isSharedBudget ? 'true' : 'false', data.profile.householdName || ''],
+        ['preferences', 'darkMode', 'currentSnapshotTab'],
+        ['preferences', data.darkMode ? 'true' : 'false', data.currentSnapshotTab || 'overview'],
+        ['importedTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence'],
+        ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '']),
+        ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence'],
+        ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '']),
+        ['budgetCategory', 'type', 'name', 'keywords'],
+        ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|')])),
+        ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate'],
+        ...data.recurringTransactions.map(item => ['recurringTransaction', item.id, item.description, item.amount, item.category, item.purchaseType, item.frequency || 'monthly', item.dayOfMonth, item.startMonth || '', item.startDate || '']),
+        ['skippedRecurringOccurrence', 'key'],
+        ...data.skippedRecurringOccurrences.map(key => ['skippedRecurringOccurrence', key])
+    ];
+
+    return rowsToCsv(rows);
+}
+
+function exportBackup() {
+    const payload = buildBackupPayload();
+    const format = document.getElementById('backup-format')?.value || 'csv';
+    const isJson = format === 'json';
+    const backupContents = isJson ? JSON.stringify(payload, null, 2) : buildBackupCsv(payload);
+    const blob = new Blob([backupContents], { type: isJson ? 'application/json' : 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const today = getCurrentDateInputValue();
+
+    link.href = url;
+    link.download = `50-40-30-budget-tracker-backup-${today}.${isJson ? 'json' : 'csv'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+
+    setBackupStatus(`${isJson ? 'JSON' : 'CSV'} backup exported on ${today}.`);
+}
+
+function parseBackupTransaction(row) {
+    return {
+        date: row[1] || '',
+        originalCategory: row[2] || '',
+        adjustedAmount: parseFloat(row[3]) || 0,
+        category: row[4] || 'uncategorized',
+        rawAmount: parseFloat(row[5]) || parseFloat(row[3]) || 0,
+        ...(row[6] ? { recurringId: row[6] } : {}),
+        ...(row[7] ? { recurringOccurrence: row[7] } : {})
+    };
+}
+
+function parseBackupCsv(csvText) {
+    const rows = parseCsvRows(csvText);
+    const data = {
+        profile: getDefaultProfile(),
+        darkMode: false,
+        importedTransactions: [],
+        manualTransactions: [],
+        budgetCategories: { income: [], needs: [], wants: [] },
+        recurringTransactions: [],
+        skippedRecurringOccurrences: [],
+        currentSnapshotTab: 'overview'
+    };
+
+    rows.forEach(row => {
+        const section = row[0];
+        if (section === 'profile' && row[1] !== 'name') {
+            data.profile = {
+                name: row[1] || '',
+                isSharedBudget: row[2] === 'true',
+                householdName: row[3] || ''
+            };
+        } else if (section === 'preferences' && row[1] !== 'darkMode') {
+            data.darkMode = row[1] === 'true';
+            data.currentSnapshotTab = row[2] || 'overview';
+        } else if (section === 'importedTransactions' && row[1] !== 'date') {
+            data.importedTransactions.push(parseBackupTransaction(row));
+        } else if (section === 'manualTransactions' && row[1] !== 'date') {
+            data.manualTransactions.push(parseBackupTransaction(row));
+        } else if (section === 'budgetCategory' && row[1] !== 'type') {
+            const type = row[1];
+            if (data.budgetCategories[type]) {
+                data.budgetCategories[type].push({
+                    name: row[2] || '',
+                    keywords: String(row[3] || '').split('|').map(keyword => keyword.trim()).filter(Boolean)
+                });
+            }
+        } else if (section === 'recurringTransaction' && row[1] !== 'id') {
+            data.recurringTransactions.push({
+                id: row[1] || '',
+                description: row[2] || '',
+                amount: parseFloat(row[3]) || 0,
+                category: row[4] || 'needs',
+                purchaseType: row[5] || 'single',
+                frequency: row[6] || 'monthly',
+                dayOfMonth: parseInt(row[7], 10) || 1,
+                startMonth: row[8] || '',
+                startDate: row[9] || ''
+            });
+        } else if (section === 'skippedRecurringOccurrence' && row[1] !== 'key') {
+            data.skippedRecurringOccurrences.push(row[1] || '');
+        }
+    });
+
+    return { appName: '50:40:30 Budget Tracker', version: 1, data };
+}
+
+function validateBackupPayload(payload) {
+    if (!payload || typeof payload !== 'object') throw new Error('Backup file is not valid backup data.');
+    const data = payload.data || payload;
+
+    if (!Array.isArray(data.importedTransactions)) throw new Error('Backup is missing imported transactions.');
+    if (!Array.isArray(data.manualTransactions)) throw new Error('Backup is missing manual transactions.');
+
+    return {
+        profile: { ...getDefaultProfile(), ...(data.profile || {}) },
+        darkMode: Boolean(data.darkMode),
+        importedTransactions: data.importedTransactions,
+        manualTransactions: data.manualTransactions,
+        budgetCategories: normalizeBudgetCategories(data.budgetCategories),
+        recurringTransactions: Array.isArray(data.recurringTransactions) ? data.recurringTransactions : [],
+        skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
+            ? data.skippedRecurringOccurrences.map(value => String(value))
+            : [],
+        currentSnapshotTab: ['overview', 'charts', 'comparisons'].includes(data.currentSnapshotTab) ? data.currentSnapshotTab : 'overview'
+    };
+}
+
+function restoreBackupData(restoredData) {
+    currentProfile = restoredData.profile;
+    importedTransactions = restoredData.importedTransactions;
+    manualTransactions = restoredData.manualTransactions;
+    budgetCategories = restoredData.budgetCategories;
+    recurringTransactions = restoredData.recurringTransactions;
+    skippedRecurringOccurrences = restoredData.skippedRecurringOccurrences;
+    currentSnapshotTab = restoredData.currentSnapshotTab;
+    hasCalculatedBreakdown = false;
+
+    localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
+    saveAllTransactions();
+    saveBudgetCategories();
+    saveRecurringTransactions();
+    setDarkMode(restoredData.darkMode);
+
+    allTransactions = [...importedTransactions, ...manualTransactions];
+    applyProfileToUI();
+    renderCategoryManager();
+    renderRecurringManager();
+    updateTransactions();
+    switchSnapshotTab(currentSnapshotTab);
+    saveState('Restore backup');
+    setBackupStatus(`Backup restored with ${allTransactions.length} transaction${allTransactions.length === 1 ? '' : 's'}.`);
+}
+
+function importBackupFile(file) {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = event => {
+        try {
+            const fileText = event.target.result;
+            const payload = String(fileText).trim().startsWith('{')
+                ? JSON.parse(fileText)
+                : parseBackupCsv(fileText);
+            const restoredData = validateBackupPayload(payload);
+
+            if (!confirm('Restore this backup? It will replace the current app data in this browser.')) {
+                setBackupStatus('Backup import canceled.');
+                return;
+            }
+
+            restoreBackupData(restoredData);
+        } catch (error) {
+            setBackupStatus(`Import failed: ${error.message}`);
+            alert(`Import failed: ${error.message}`);
+        } finally {
+            document.getElementById('import-backup-file').value = '';
+        }
+    };
+    reader.readAsText(file);
+}
+
 function loadProfile() {
     const savedProfile = localStorage.getItem('budgetProfile');
     if (!savedProfile) {
@@ -1739,6 +1998,8 @@ function attachNavigationListeners() {
     document.getElementById('reset-categories-btn').addEventListener('click', resetManagedCategories);
     document.getElementById('add-recurring-btn').addEventListener('click', addRecurringTransaction);
     document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
+    document.getElementById('export-backup-btn').addEventListener('click', exportBackup);
+    document.getElementById('import-backup-file').addEventListener('change', event => importBackupFile(event.target.files[0]));
     document.getElementById('profile-shared-budget').addEventListener('change', toggleProfileSharedFields);
     document.getElementById('save-profile-btn').addEventListener('click', () => {
         const name = document.getElementById('profile-name').value.trim();
