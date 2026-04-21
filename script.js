@@ -1256,7 +1256,7 @@ document.getElementById('export').addEventListener('click', function() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, 'Monthly Summary');
-    XLSX.writeFile(wb, `50-40-30_Budget_Tracker_${currentYear}.csv`);
+    XLSX.writeFile(wb, `50:40:30_Budget_Tracker_${currentYear}.csv`);
 });
 
 // Init
