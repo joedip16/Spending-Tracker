@@ -18,6 +18,13 @@ let currentSnapshotTab = 'overview';
 let budgetCategories = null;
 let recurringTransactions = [];
 let skippedRecurringOccurrences = [];
+let budgetGoals = null;
+
+const DEFAULT_BUDGET_GOALS = {
+    needs: 50,
+    wants: 30,
+    savings: 20
+};
 
 const DEFAULT_BUDGET_CATEGORIES = {
     income: [
@@ -78,6 +85,108 @@ function getDefaultProfile() {
     };
 }
 
+function normalizeBudgetGoals(goals) {
+    const normalized = { ...DEFAULT_BUDGET_GOALS };
+    ['needs', 'wants', 'savings'].forEach(key => {
+        const value = Number(goals?.[key]);
+        if (!Number.isNaN(value) && value >= 0 && value <= 100) {
+            normalized[key] = value;
+        }
+    });
+    return normalized;
+}
+
+function loadBudgetGoals() {
+    const savedGoals = localStorage.getItem('budgetGoals');
+    if (!savedGoals) {
+        budgetGoals = { ...DEFAULT_BUDGET_GOALS };
+        return;
+    }
+
+    try {
+        budgetGoals = normalizeBudgetGoals(JSON.parse(savedGoals));
+    } catch (error) {
+        budgetGoals = { ...DEFAULT_BUDGET_GOALS };
+    }
+}
+
+function saveBudgetGoals(goals) {
+    budgetGoals = normalizeBudgetGoals(goals);
+    localStorage.setItem('budgetGoals', JSON.stringify(budgetGoals));
+}
+
+function getBudgetGoals() {
+    if (!budgetGoals) loadBudgetGoals();
+    return budgetGoals;
+}
+
+function syncBudgetGoalForm() {
+    const goals = getBudgetGoals();
+    const needsInput = document.getElementById('goal-needs');
+    const wantsInput = document.getElementById('goal-wants');
+    const savingsInput = document.getElementById('goal-savings');
+    if (!needsInput || !wantsInput || !savingsInput) return;
+
+    needsInput.value = goals.needs;
+    wantsInput.value = goals.wants;
+    savingsInput.value = goals.savings;
+    updateBudgetGoalTotal();
+}
+
+function updateBudgetGoalTotal() {
+    const total = ['goal-needs', 'goal-wants', 'goal-savings']
+        .map(id => Number(document.getElementById(id)?.value || 0))
+        .reduce((sum, value) => sum + value, 0);
+    const totalText = document.getElementById('goal-total-text');
+    if (!totalText) return;
+
+    totalText.textContent = `Current total: ${total.toFixed(0)}%`;
+    totalText.classList.toggle('warning', total !== 100);
+}
+
+function saveBudgetGoalSettings() {
+    const goals = {
+        needs: Number(document.getElementById('goal-needs').value),
+        wants: Number(document.getElementById('goal-wants').value),
+        savings: Number(document.getElementById('goal-savings').value)
+    };
+    const total = goals.needs + goals.wants + goals.savings;
+
+    if (Object.values(goals).some(value => Number.isNaN(value) || value < 0 || value > 100)) {
+        alert('Please enter goal percentages between 0 and 100.');
+        return;
+    }
+
+    if (total !== 100 && !confirm(`These goals add up to ${total}%, not 100%. Save them anyway?`)) {
+        return;
+    }
+
+    saveBudgetGoals(goals);
+    updateBudgetGoalTargets();
+    renderHomeDashboard();
+    refreshCalculatedView();
+    updateBudgetGoalTotal();
+}
+
+function resetBudgetGoalSettings() {
+    saveBudgetGoals(DEFAULT_BUDGET_GOALS);
+    syncBudgetGoalForm();
+    updateBudgetGoalTargets();
+    renderHomeDashboard();
+    refreshCalculatedView();
+}
+
+function updateBudgetGoalTargets() {
+    const goals = getBudgetGoals();
+    const wantsTarget = document.getElementById('home-wants-target');
+    const needsTarget = document.getElementById('home-needs-target');
+    const savingsTarget = document.getElementById('home-savings-target');
+
+    if (wantsTarget) wantsTarget.textContent = `Target: ${goals.wants}% or less`;
+    if (needsTarget) needsTarget.textContent = `Target: ${goals.needs}% or less`;
+    if (savingsTarget) savingsTarget.textContent = `Target: ${goals.savings}% or more`;
+}
+
 function cloneDefaultCategories() {
     return JSON.parse(JSON.stringify(DEFAULT_BUDGET_CATEGORIES));
 }
@@ -89,7 +198,8 @@ function normalizeCategoryList(list, fallbackList) {
             name: String(category?.name || '').trim(),
             keywords: Array.isArray(category?.keywords)
                 ? category.keywords.map(keyword => String(keyword).trim()).filter(Boolean)
-                : String(category?.keywords || '').split(',').map(keyword => keyword.trim()).filter(Boolean)
+                : String(category?.keywords || '').split(',').map(keyword => keyword.trim()).filter(Boolean),
+            goal: Number(category?.goal) > 0 ? Number(category.goal) : null
         }))
         .filter(category => category.name);
 }
@@ -132,6 +242,11 @@ function createCategoryTotals(type) {
         totals[category.name] = 0;
         return totals;
     }, {});
+}
+
+function getCategoryGoal(type, name) {
+    const category = getCategoryList(type).find(item => item.name === name);
+    return Number(category?.goal) > 0 ? Number(category.goal) : null;
 }
 
 function categoryMatchesText(category, text) {
@@ -179,18 +294,30 @@ function renderCategoryManager() {
             <div class="category-row" data-type="${type}" data-index="${index}">
                 <input type="text" class="category-name-input" value="${escapeHtml(category.name)}" aria-label="${formatCategoryType(type)} category name">
                 <input type="text" class="category-keywords-input" value="${escapeHtml(category.keywords.join(', '))}" aria-label="${escapeHtml(category.name)} keywords">
+                <input type="number" class="category-goal-input" min="0" step="0.01" value="${category.goal || ''}" placeholder="Monthly goal $" aria-label="${escapeHtml(category.name)} monthly goal">
                 <button class="save-category-btn" data-type="${type}" data-index="${index}">Save</button>
                 <button class="delete-category-btn danger-button" data-type="${type}" data-index="${index}">Delete</button>
             </div>
         `).join('');
 
         return `
-            <section class="category-manager-section">
-                <h4>${formatCategoryType(type)}</h4>
-                ${rows || '<p class="panel-copy">No categories yet.</p>'}
+            <section class="category-manager-section collapsed" data-category-section="${type}">
+                <button class="category-section-toggle" type="button" data-type="${type}">
+                    <span>${formatCategoryType(type)}</span>
+                    <span>${getCategoryList(type).length} categories</span>
+                </button>
+                <div class="category-section-body">
+                    ${rows || '<p class="panel-copy">No categories yet.</p>'}
+                </div>
             </section>
         `;
     }).join('');
+
+    container.querySelectorAll('.category-section-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+            button.closest('.category-manager-section').classList.toggle('collapsed');
+        });
+    });
 
     container.querySelectorAll('.save-category-btn').forEach(button => {
         button.addEventListener('click', () => {
@@ -202,13 +329,15 @@ function renderCategoryManager() {
                 .split(',')
                 .map(keyword => keyword.trim())
                 .filter(Boolean);
+            const goalValue = parseFloat(row.querySelector('.category-goal-input').value);
+            const goal = Number.isNaN(goalValue) || goalValue <= 0 ? null : goalValue;
 
             if (!name) {
                 alert('Please enter a category name.');
                 return;
             }
 
-            budgetCategories[type][index] = { name, keywords };
+            budgetCategories[type][index] = { name, keywords, goal };
             saveBudgetCategories();
             refreshAfterCategoryChange();
         });
@@ -245,7 +374,7 @@ function addManagedCategory() {
         return;
     }
 
-    budgetCategories[type].push({ name, keywords });
+    budgetCategories[type].push({ name, keywords, goal: null });
     saveBudgetCategories();
     nameInput.value = '';
     keywordsInput.value = '';
@@ -555,6 +684,7 @@ function buildBackupPayload() {
         exportedAt: new Date().toISOString(),
         data: {
             profile: currentProfile || getDefaultProfile(),
+            budgetGoals: getBudgetGoals(),
             darkMode: document.body.classList.contains('dark-mode'),
             importedTransactions,
             manualTransactions,
@@ -624,12 +754,14 @@ function buildBackupCsv(payload) {
         ['profile', data.profile.name || '', data.profile.isSharedBudget ? 'true' : 'false', data.profile.householdName || ''],
         ['preferences', 'darkMode', 'currentSnapshotTab'],
         ['preferences', data.darkMode ? 'true' : 'false', data.currentSnapshotTab || 'overview'],
+        ['budgetGoals', 'needs', 'wants', 'savings'],
+        ['budgetGoals', data.budgetGoals.needs, data.budgetGoals.wants, data.budgetGoals.savings],
         ['importedTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence'],
         ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '']),
         ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence'],
         ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '']),
-        ['budgetCategory', 'type', 'name', 'keywords'],
-        ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|')])),
+        ['budgetCategory', 'type', 'name', 'keywords', 'monthlyGoal'],
+        ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || ''])),
         ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate'],
         ...data.recurringTransactions.map(item => ['recurringTransaction', item.id, item.description, item.amount, item.category, item.purchaseType, item.frequency || 'monthly', item.dayOfMonth, item.startMonth || '', item.startDate || '']),
         ['skippedRecurringOccurrence', 'key'],
@@ -679,6 +811,7 @@ function parseBackupCsv(csvText) {
         importedTransactions: [],
         manualTransactions: [],
         budgetCategories: { income: [], needs: [], wants: [] },
+        budgetGoals: { ...DEFAULT_BUDGET_GOALS },
         recurringTransactions: [],
         skippedRecurringOccurrences: [],
         currentSnapshotTab: 'overview'
@@ -695,6 +828,12 @@ function parseBackupCsv(csvText) {
         } else if (section === 'preferences' && row[1] !== 'darkMode') {
             data.darkMode = row[1] === 'true';
             data.currentSnapshotTab = row[2] || 'overview';
+        } else if (section === 'budgetGoals' && row[1] !== 'needs') {
+            data.budgetGoals = {
+                needs: Number(row[1]),
+                wants: Number(row[2]),
+                savings: Number(row[3])
+            };
         } else if (section === 'importedTransactions' && row[1] !== 'date') {
             data.importedTransactions.push(parseBackupTransaction(row));
         } else if (section === 'manualTransactions' && row[1] !== 'date') {
@@ -704,7 +843,8 @@ function parseBackupCsv(csvText) {
             if (data.budgetCategories[type]) {
                 data.budgetCategories[type].push({
                     name: row[2] || '',
-                    keywords: String(row[3] || '').split('|').map(keyword => keyword.trim()).filter(Boolean)
+                    keywords: String(row[3] || '').split('|').map(keyword => keyword.trim()).filter(Boolean),
+                    goal: Number(row[4]) > 0 ? Number(row[4]) : null
                 });
             }
         } else if (section === 'recurringTransaction' && row[1] !== 'id') {
@@ -740,6 +880,7 @@ function validateBackupPayload(payload) {
         importedTransactions: data.importedTransactions,
         manualTransactions: data.manualTransactions,
         budgetCategories: normalizeBudgetCategories(data.budgetCategories),
+        budgetGoals: normalizeBudgetGoals(data.budgetGoals),
         recurringTransactions: Array.isArray(data.recurringTransactions) ? data.recurringTransactions : [],
         skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
             ? data.skippedRecurringOccurrences.map(value => String(value))
@@ -753,6 +894,7 @@ function restoreBackupData(restoredData) {
     importedTransactions = restoredData.importedTransactions;
     manualTransactions = restoredData.manualTransactions;
     budgetCategories = restoredData.budgetCategories;
+    budgetGoals = restoredData.budgetGoals;
     recurringTransactions = restoredData.recurringTransactions;
     skippedRecurringOccurrences = restoredData.skippedRecurringOccurrences;
     currentSnapshotTab = restoredData.currentSnapshotTab;
@@ -761,12 +903,15 @@ function restoreBackupData(restoredData) {
     localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
     saveAllTransactions();
     saveBudgetCategories();
+    saveBudgetGoals(budgetGoals);
     saveRecurringTransactions();
     setDarkMode(restoredData.darkMode);
 
     allTransactions = [...importedTransactions, ...manualTransactions];
     applyProfileToUI();
     renderCategoryManager();
+    syncBudgetGoalForm();
+    updateBudgetGoalTargets();
     renderRecurringManager();
     updateTransactions();
     switchSnapshotTab(currentSnapshotTab);
@@ -954,6 +1099,7 @@ function updateUndoRedoButtons() {
 // Load persisted data
 function loadPersistedData() {
     loadProfile();
+    loadBudgetGoals();
     loadBudgetCategories();
     loadRecurringTransactions();
 
@@ -970,6 +1116,8 @@ function loadPersistedData() {
     const darkMode = localStorage.getItem('darkMode') === 'true';
     setDarkMode(darkMode);
     applyProfileToUI();
+    syncBudgetGoalForm();
+    updateBudgetGoalTargets();
     renderCategoryManager();
     renderRecurringManager();
 
@@ -1551,6 +1699,8 @@ function renderHomeDashboard() {
 
     const periodLabel = currentMonth === 'all' ? `${homeYear}` : `${getSelectedMonths()[0]} ${homeYear}`;
     const activeViewLabel = getCurrentBreakdownLabel(isJoeViewActive);
+    const goals = getBudgetGoals();
+    updateBudgetGoalTargets();
     document.getElementById('home-subtitle').textContent = `Live ${activeViewLabel.toLowerCase()} snapshot for ${periodLabel}.`;
     document.getElementById('home-year-title').textContent = `${periodLabel} Snapshot`;
     document.getElementById('home-wants-percent').textContent = `${snapshot.avgWantsPct.toFixed(1)}%`;
@@ -1585,12 +1735,12 @@ function renderHomeDashboard() {
     document.getElementById('legend-savings').textContent = `Savings ${snapshot.avgNetPercent.toFixed(1)}%`;
 
     document.getElementById('comparison-bars').innerHTML = [
-        { label: 'Needs', value: snapshot.avgNeedsPct, target: 50, className: 'needs' },
-        { label: 'Wants', value: snapshot.avgWantsPct, target: 30, className: 'wants' },
-        { label: 'Savings', value: snapshot.avgNetPercent, target: 20, className: 'savings' }
+        { label: 'Needs', value: snapshot.avgNeedsPct, target: goals.needs, className: 'needs', goodBelow: true },
+        { label: 'Wants', value: snapshot.avgWantsPct, target: goals.wants, className: 'wants', goodBelow: true },
+        { label: 'Savings', value: snapshot.avgNetPercent, target: goals.savings, className: 'savings', goodBelow: false }
     ].map(item => `
         <div class="comparison-row">
-            <span class="comparison-copy">${item.label}</span>
+            <span class="comparison-copy">${item.label} <small>goal ${item.goodBelow ? '≤' : '≥'}${item.target}%</small></span>
             <div class="comparison-track">
                 <div class="comparison-fill ${item.className}" style="width:${Math.min(Math.max(item.value, 0), 100)}%"></div>
             </div>
@@ -1607,10 +1757,11 @@ function renderHomeDashboard() {
         { label: 'Wants', value: snapshot.avgWantsPct },
         { label: 'Savings', value: snapshot.avgNetPercent }
     ].sort((a, b) => b.value - a.value)[0];
+    const savingsGap = snapshot.avgNetPercent - goals.savings;
 
     document.getElementById('comparison-cards').innerHTML = [
         `<div class="comparison-card"><p class="panel-kicker">Largest Share</p><strong>${strongestCategory.label}</strong><span>${strongestCategory.value.toFixed(1)}% of income in this period.</span></div>`,
-        `<div class="comparison-card"><p class="panel-kicker">Target Gap</p><strong>${(snapshot.avgNetPercent - 20).toFixed(1)} pts</strong><span>Difference from the 20% savings target.</span></div>`,
+        `<div class="comparison-card"><p class="panel-kicker">Savings Goal Gap</p><strong>${savingsGap >= 0 ? '+' : ''}${savingsGap.toFixed(1)} pts</strong><span>Difference from your ${goals.savings}% savings target.</span></div>`,
         `<div class="comparison-card"><p class="panel-kicker">Needs vs Wants</p><strong>${(snapshot.avgNeeds - snapshot.avgWants >= 0 ? '+' : '')}$${formatMoney(snapshot.avgNeeds - snapshot.avgWants)}</strong><span>Average monthly difference between needs and wants.</span></div>`,
         `<div class="comparison-card"><p class="panel-kicker">Spending Ratio</p><strong>${snapshot.avgWants === 0 ? '—' : `${(snapshot.avgNeeds / snapshot.avgWants).toFixed(2)}x`}</strong><span>Needs compared with wants during this period.</span></div>`
     ].join('');
@@ -2189,6 +2340,11 @@ function attachNavigationListeners() {
     document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
     document.getElementById('export-backup-btn').addEventListener('click', exportBackup);
     document.getElementById('import-backup-file').addEventListener('change', event => importBackupFile(event.target.files[0]));
+    ['goal-needs', 'goal-wants', 'goal-savings'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updateBudgetGoalTotal);
+    });
+    document.getElementById('save-goals-btn').addEventListener('click', saveBudgetGoalSettings);
+    document.getElementById('reset-goals-btn').addEventListener('click', resetBudgetGoalSettings);
     ['transaction-search', 'transaction-category-filter', 'transaction-type-filter', 'transaction-source-filter', 'transaction-min-amount', 'transaction-max-amount'].forEach(id => {
         document.getElementById(id).addEventListener('input', displayTransactions);
         document.getElementById(id).addEventListener('change', displayTransactions);
@@ -2279,10 +2435,24 @@ function calculateBreakdown(isJoeView = false) {
         const color = goodBelow ? (value < threshold ? 'green' : 'red') : (value >= threshold ? 'green' : 'red');
         return `<span style="color:${color};font-weight:bold;">${value.toFixed(1)}%</span>`;
     }
+    const goals = getBudgetGoals();
 
     function hasActivityForKey(collectionKey, key) {
         if ((collectionKey[key] || 0) !== 0) return true;
         return visibleMonths.some(month => (monthlyData[month][collectionKey === totalIncomeSources ? 'incomeSources' : collectionKey === totalNeedsSubcategories ? 'needsSubcategories' : 'wantsSubcategories'][key] || 0) !== 0);
+    }
+
+    function formatCategoryGoalCell(type, key, yearlyAverage) {
+        const goal = getCategoryGoal(type, key);
+        if (!goal) return '—';
+
+        const difference = goal - yearlyAverage;
+        const statusClass = difference >= 0 ? 'goal-good' : 'goal-over';
+        const statusText = difference >= 0
+            ? `$${formatMoney(difference)} under`
+            : `$${formatMoney(Math.abs(difference))} over`;
+
+        return `<span class="${statusClass}">$${formatMoney(goal)} / mo<br><small>${statusText}</small></span>`;
     }
 
     const activeIncomeSources = Object.keys(incomeSources).filter(src => hasActivityForKey(totalIncomeSources, src));
@@ -2294,20 +2464,20 @@ function calculateBreakdown(isJoeView = false) {
 
     let tableHTML = `<h2>${title}</h2><div class="table-wrapper"><table><thead><tr><th>Category</th>`;
     visibleMonths.forEach(m => tableHTML += `<th>${m}</th>`);
-    tableHTML += '<th>Yearly Average</th><th>Yearly Total</th></tr></thead><tbody>';
+    tableHTML += '<th>Yearly Average</th><th>Monthly Goal</th><th>Yearly Total</th></tr></thead><tbody>';
 
-    const addGroup = label => tableHTML += `<tr class="category-group"><td colspan="${visibleMonths.length + 3}">${label}</td></tr>`;
+    const addGroup = label => tableHTML += `<tr class="category-group"><td colspan="${visibleMonths.length + 4}">${label}</td></tr>`;
 
     if (activeIncomeSources.length > 0 || totalIncome !== 0) {
         addGroup('Income Sources');
         activeIncomeSources.forEach(src => {
             tableHTML += `<tr><td>${src}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].incomeSources[src])}</td>`);
-            tableHTML += `<td>$${formatMoney(yearlyIncomeSources[src] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyIncomeSources[src])}</td></tr>`;
+            tableHTML += `<td>$${formatMoney(yearlyIncomeSources[src] / yearlyNumMonths)}</td><td>${formatCategoryGoalCell('income', src, yearlyIncomeSources[src] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyIncomeSources[src])}</td></tr>`;
         });
         tableHTML += `<tr class="category-group"><td>Total Income</td>`;
         visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].income)}</td>`);
-        tableHTML += `<td>$${formatMoney(yearlyAvgIncome)}</td><td>$${formatMoney(yearlyTotalIncome)}</td></tr>`;
+        tableHTML += `<td>$${formatMoney(yearlyAvgIncome)}</td><td>—</td><td>$${formatMoney(yearlyTotalIncome)}</td></tr>`;
     }
 
     if (activeNeedsSubcategories.length > 0 || totalNeeds !== 0) {
@@ -2315,11 +2485,11 @@ function calculateBreakdown(isJoeView = false) {
         activeNeedsSubcategories.forEach(sub => {
             tableHTML += `<tr><td>${sub}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needsSubcategories[sub])}</td>`);
-            tableHTML += `<td>$${formatMoney(yearlyNeedsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyNeedsSubcategories[sub])}</td></tr>`;
+            tableHTML += `<td>$${formatMoney(yearlyNeedsSubcategories[sub] / yearlyNumMonths)}</td><td>${formatCategoryGoalCell('needs', sub, yearlyNeedsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyNeedsSubcategories[sub])}</td></tr>`;
         });
         tableHTML += `<tr class="category-group"><td>Total Needs</td>`;
-        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(monthlyData[m].needsPercent, 50, true)})</td>`);
-        tableHTML += `<td>$${formatMoney(yearlyAvgNeeds)} (${colorPercent(yearlyAvgNeedsPct, 50, true)})</td><td>$${formatMoney(yearlyTotalNeeds)}</td></tr>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(monthlyData[m].needsPercent, goals.needs, true)})</td>`);
+        tableHTML += `<td>$${formatMoney(yearlyAvgNeeds)} (${colorPercent(yearlyAvgNeedsPct, goals.needs, true)})</td><td>—</td><td>$${formatMoney(yearlyTotalNeeds)}</td></tr>`;
     }
 
     if (activeWantsSubcategories.length > 0 || totalWants !== 0) {
@@ -2327,23 +2497,23 @@ function calculateBreakdown(isJoeView = false) {
         activeWantsSubcategories.forEach(sub => {
             tableHTML += `<tr><td>${sub}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wantsSubcategories[sub])}</td>`);
-            tableHTML += `<td>$${formatMoney(yearlyWantsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyWantsSubcategories[sub])}</td></tr>`;
+            tableHTML += `<td>$${formatMoney(yearlyWantsSubcategories[sub] / yearlyNumMonths)}</td><td>${formatCategoryGoalCell('wants', sub, yearlyWantsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyWantsSubcategories[sub])}</td></tr>`;
         });
         tableHTML += `<tr class="category-group"><td>Total Wants</td>`;
-        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(monthlyData[m].wantsPercent, 30, true)})</td>`);
-        tableHTML += `<td>$${formatMoney(yearlyAvgWants)} (${colorPercent(yearlyAvgWantsPct, 30, true)})</td><td>$${formatMoney(yearlyTotalWants)}</td></tr>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(monthlyData[m].wantsPercent, goals.wants, true)})</td>`);
+        tableHTML += `<td>$${formatMoney(yearlyAvgWants)} (${colorPercent(yearlyAvgWantsPct, goals.wants, true)})</td><td>—</td><td>$${formatMoney(yearlyTotalWants)}</td></tr>`;
     }
 
     if (totalExpenses !== 0) {
         tableHTML += `<tr class="category-group"><td>Total Expenses</td>`;
         visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].expenses)}</td>`);
-        tableHTML += `<td>$${formatMoney(yearlyAvgNeeds + yearlyAvgWants)}</td><td>$${formatMoney(yearlyTotalExpenses)}</td></tr>`;
+        tableHTML += `<td>$${formatMoney(yearlyAvgNeeds + yearlyAvgWants)}</td><td>—</td><td>$${formatMoney(yearlyTotalExpenses)}</td></tr>`;
     }
 
     if (totalIncome !== 0 || totalExpenses !== 0) {
         tableHTML += `<tr class="category-group"><td>Net Income</td>`;
-        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].netIncome)} (${colorPercent(monthlyData[m].netPercent, 20, false)})</td>`);
-        tableHTML += `<td>$${formatMoney(yearlyAvgNet)} (${colorPercent(yearlyAvgNetPercent, 20, false)})</td><td>$${formatMoney(yearlyTotalIncome - yearlyTotalExpenses)}</td></tr>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].netIncome)} (${colorPercent(monthlyData[m].netPercent, goals.savings, false)})</td>`);
+        tableHTML += `<td>$${formatMoney(yearlyAvgNet)} (${colorPercent(yearlyAvgNetPercent, goals.savings, false)})</td><td>—</td><td>$${formatMoney(yearlyTotalIncome - yearlyTotalExpenses)}</td></tr>`;
     }
 
     tableHTML += '</tbody></table></div>';
@@ -2351,15 +2521,15 @@ function calculateBreakdown(isJoeView = false) {
 
     document.getElementById('totals-text').innerHTML = `
         <div class="progress-container">
-            <div class="progress-label"><span>Needs (target ≤50%)</span><span>${avgNeedsPct.toFixed(1)}%</span></div>
+            <div class="progress-label"><span>Needs (target ≤${goals.needs}%)</span><span>${avgNeedsPct.toFixed(1)}%</span></div>
             <div class="progress-bar"><div class="progress-fill needs" style="width: ${Math.min(avgNeedsPct, 100)}%">${avgNeedsPct.toFixed(1)}%</div></div>
         </div>
         <div class="progress-container">
-            <div class="progress-label"><span>Wants (target ≤30%)</span><span>${avgWantsPct.toFixed(1)}%</span></div>
+            <div class="progress-label"><span>Wants (target ≤${goals.wants}%)</span><span>${avgWantsPct.toFixed(1)}%</span></div>
             <div class="progress-bar"><div class="progress-fill wants" style="width: ${Math.min(avgWantsPct, 100)}%">${avgWantsPct.toFixed(1)}%</div></div>
         </div>
         <div class="progress-container">
-            <div class="progress-label"><span>Savings / Debt Paydown (target ≥20%)</span><span>${avgNetPercent.toFixed(1)}%</span></div>
+            <div class="progress-label"><span>Savings / Debt Paydown (target ≥${goals.savings}%)</span><span>${avgNetPercent.toFixed(1)}%</span></div>
             <div class="progress-bar"><div class="progress-fill savings" style="width: ${Math.min(Math.max(avgNetPercent, 0), 100)}%">${avgNetPercent.toFixed(1)}%</div></div>
         </div>
     `;

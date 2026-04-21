@@ -48,7 +48,7 @@
                             <div class="summary-progress">
                                 <div id="home-wants-bar" class="summary-progress-fill wants"></div>
                             </div>
-                            <p class="summary-target">Target: 30% or less</p>
+                            <p id="home-wants-target" class="summary-target">Target: 30% or less</p>
                         </article>
 
                         <article class="summary-card needs-card">
@@ -58,7 +58,7 @@
                             <div class="summary-progress">
                                 <div id="home-needs-bar" class="summary-progress-fill needs"></div>
                             </div>
-                            <p class="summary-target">Target: 50% or less</p>
+                            <p id="home-needs-target" class="summary-target">Target: 50% or less</p>
                         </article>
 
                         <article class="summary-card savings-card">
@@ -68,7 +68,7 @@
                             <div class="summary-progress">
                                 <div id="home-savings-bar" class="summary-progress-fill savings"></div>
                             </div>
-                            <p class="summary-target">Target: 20% or more</p>
+                            <p id="home-savings-target" class="summary-target">Target: 20% or more</p>
                         </article>
                     </div>
 
@@ -137,7 +137,7 @@
                         <div id="monthly-breakdown"></div>
 
                         <div id="totals">
-                            <h2>50:40:30 Summary (Average)</h2>
+                            <h2>Budget Goals Summary (Average)</h2>
                             <div id="totals-text"></div>
                         </div>
 
@@ -310,6 +310,33 @@
                                 <span class="settings-slider"></span>
                             </span>
                         </label>
+                    </section>
+
+                    <section class="panel settings-card budget-goals-card">
+                        <p class="panel-kicker">Goals</p>
+                        <h3>Budget Goals</h3>
+                        <p class="panel-copy">Set the target percentages used across the Home cards, charts, and breakdown summary.</p>
+
+                        <div class="budget-goal-form">
+                            <label for="goal-needs">
+                                Needs %
+                                <input type="number" id="goal-needs" min="0" max="100" step="1">
+                            </label>
+                            <label for="goal-wants">
+                                Wants %
+                                <input type="number" id="goal-wants" min="0" max="100" step="1">
+                            </label>
+                            <label for="goal-savings">
+                                Savings %
+                                <input type="number" id="goal-savings" min="0" max="100" step="1">
+                            </label>
+                        </div>
+
+                        <p id="goal-total-text" class="goal-total-text">Current total: 100%</p>
+                        <div class="settings-actions">
+                            <button id="save-goals-btn">Save Goals</button>
+                            <button id="reset-goals-btn" class="secondary-button">Reset 50/30/20</button>
+                        </div>
                     </section>
 
                     <section class="panel settings-card category-manager-card">

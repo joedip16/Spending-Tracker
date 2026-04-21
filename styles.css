@@ -409,6 +409,13 @@ table,
     font-weight: 600;
 }
 
+.comparison-copy small {
+    display: block;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
 .comparison-track {
     flex: 1;
     height: 10px;
@@ -611,6 +618,51 @@ table,
     font-size: 1.6rem;
 }
 
+.budget-goal-form {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.budget-goal-form label {
+    display: grid;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.92rem;
+    font-weight: 700;
+}
+
+.budget-goal-form input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.goal-total-text {
+    margin-top: 12px;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.goal-total-text.warning {
+    color: var(--needs);
+}
+
+.settings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.settings-actions .secondary-button {
+    margin-top: 0;
+}
+
 .category-add-form,
 .recurring-add-form {
     display: grid;
@@ -627,7 +679,8 @@ table,
 .category-add-form select,
 .recurring-add-form input,
 .recurring-add-form select,
-.category-row input {
+.category-row input,
+.category-goal-input {
     width: 100%;
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -650,14 +703,44 @@ table,
     padding: 16px;
 }
 
-.category-manager-section h4 {
-    margin-bottom: 12px;
+.category-section-toggle {
+    width: 100%;
+    background: transparent;
     color: var(--blue-deep);
+    box-shadow: none;
+    border: 0;
+    padding: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    font-weight: 800;
+    gap: 12px;
+}
+
+.category-section-toggle::after {
+    content: "Collapse";
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.category-manager-section.collapsed .category-section-toggle::after {
+    content: "Expand";
+}
+
+.category-section-body {
+    margin-top: 12px;
+    overflow-x: auto;
+}
+
+.category-manager-section.collapsed .category-section-body {
+    display: none;
 }
 
 .category-row {
     display: grid;
-    grid-template-columns: minmax(130px, 0.9fr) minmax(180px, 1.6fr) auto auto;
+    grid-template-columns: minmax(130px, 0.9fr) minmax(180px, 1.4fr) minmax(130px, 0.8fr) auto auto;
     gap: 10px;
     align-items: center;
     padding: 10px 0;
@@ -1034,6 +1117,23 @@ td {
     border-bottom: 1px solid rgba(104, 132, 168, 0.12);
 }
 
+.goal-good {
+    color: var(--savings);
+    font-weight: 700;
+}
+
+.goal-over {
+    color: var(--needs);
+    font-weight: 700;
+}
+
+.goal-good small,
+.goal-over small {
+    color: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
 .action-btn {
     padding: 8px 12px;
     border-radius: 10px;
@@ -1211,6 +1311,7 @@ body.dark-mode .manual-recurring-option select,
 body.dark-mode .backup-format-label select,
 body.dark-mode .transaction-search-panel input,
 body.dark-mode .transaction-search-panel select,
+body.dark-mode .budget-goal-form input,
 body.dark-mode .category-row input {
     background: rgba(9, 19, 31, 0.76);
     color: var(--text);
@@ -1232,6 +1333,7 @@ body.dark-mode .nav-btn.active {
     .summary-grid,
     .home-panels,
     .settings-grid,
+    .budget-goal-form,
     .chart-grid,
     .comparison-card-grid {
         grid-template-columns: 1fr;
