@@ -228,6 +228,30 @@
                         <label for="transaction-month-select">Month:</label>
                         <select id="transaction-month-select"></select>
                     </div>
+                    <div class="transaction-search-panel">
+                        <input type="search" id="transaction-search" placeholder="Search descriptions">
+                        <select id="transaction-category-filter">
+                            <option value="all">All Categories</option>
+                            <option value="income">Income / Savings</option>
+                            <option value="needs">Needs</option>
+                            <option value="wants">Wants</option>
+                            <option value="uncategorized">Uncategorized</option>
+                        </select>
+                        <select id="transaction-type-filter">
+                            <option value="all">Single + Joint</option>
+                            <option value="single">Single Only</option>
+                            <option value="joint">Joint Only</option>
+                        </select>
+                        <select id="transaction-source-filter">
+                            <option value="all">All Sources</option>
+                            <option value="imported">Imported</option>
+                            <option value="manual">Manual</option>
+                            <option value="recurring">Recurring</option>
+                        </select>
+                        <input type="number" id="transaction-min-amount" step="0.01" placeholder="Min amount">
+                        <input type="number" id="transaction-max-amount" step="0.01" placeholder="Max amount">
+                        <button id="clear-transaction-filters" class="secondary-button">Clear Filters</button>
+                    </div>
                     <div id="transaction-meta" class="transaction-meta"></div>
                     <div id="transactions-container">
                         <div class="table-wrapper">

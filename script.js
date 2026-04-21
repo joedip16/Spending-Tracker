@@ -1094,6 +1094,58 @@ function transactionMatchesCurrentPeriod(txn) {
     return true;
 }
 
+function getTransactionFilters() {
+    const minAmountValue = document.getElementById('transaction-min-amount')?.value;
+    const maxAmountValue = document.getElementById('transaction-max-amount')?.value;
+
+    return {
+        search: String(document.getElementById('transaction-search')?.value || '').trim().toLowerCase(),
+        category: document.getElementById('transaction-category-filter')?.value || 'all',
+        purchaseType: document.getElementById('transaction-type-filter')?.value || 'all',
+        source: document.getElementById('transaction-source-filter')?.value || 'all',
+        minAmount: minAmountValue === '' || minAmountValue === undefined ? null : parseFloat(minAmountValue),
+        maxAmount: maxAmountValue === '' || maxAmountValue === undefined ? null : parseFloat(maxAmountValue)
+    };
+}
+
+function transactionMatchesSearchFilters(txn) {
+    const filters = getTransactionFilters();
+    const description = String(txn.originalCategory || '').toLowerCase();
+    const absoluteAmount = Math.abs(Number(txn.adjustedAmount) || 0);
+    const isJoint = /\(joint\)$/i.test(String(txn.originalCategory || ''));
+    const purchaseType = isJoint ? 'joint' : 'single';
+    const isImported = importedTransactions.includes(txn);
+    const isManual = manualTransactions.includes(txn);
+    const isRecurring = Boolean(txn.recurringId);
+
+    if (filters.search && !description.includes(filters.search)) return false;
+    if (filters.category !== 'all' && txn.category !== filters.category) return false;
+    if (filters.purchaseType !== 'all' && purchaseType !== filters.purchaseType) return false;
+    if (filters.source === 'imported' && !isImported) return false;
+    if (filters.source === 'manual' && !isManual) return false;
+    if (filters.source === 'recurring' && !isRecurring) return false;
+    if (filters.minAmount !== null && !Number.isNaN(filters.minAmount) && absoluteAmount < filters.minAmount) return false;
+    if (filters.maxAmount !== null && !Number.isNaN(filters.maxAmount) && absoluteAmount > filters.maxAmount) return false;
+
+    return true;
+}
+
+function getFilteredTransactions() {
+    return allTransactions
+        .filter(transactionMatchesCurrentPeriod)
+        .filter(transactionMatchesSearchFilters);
+}
+
+function clearTransactionFilters() {
+    document.getElementById('transaction-search').value = '';
+    document.getElementById('transaction-category-filter').value = 'all';
+    document.getElementById('transaction-type-filter').value = 'all';
+    document.getElementById('transaction-source-filter').value = 'all';
+    document.getElementById('transaction-min-amount').value = '';
+    document.getElementById('transaction-max-amount').value = '';
+    displayTransactions();
+}
+
 function parseTransactionDate(dateString) {
     const match = String(dateString || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (!match) return null;
@@ -1440,8 +1492,10 @@ function updateTransactionMeta() {
     const meta = document.getElementById('transaction-meta');
     if (!meta) return;
 
-    const visibleTransactions = allTransactions.filter(transactionMatchesCurrentPeriod);
-    const totalCount = visibleTransactions.length;
+    const periodTransactions = allTransactions.filter(transactionMatchesCurrentPeriod);
+    const visibleTransactions = getFilteredTransactions();
+    const totalCount = periodTransactions.length;
+    const visibleCount = visibleTransactions.length;
     const uncategorizedCount = visibleTransactions.filter(txn => txn.category === 'uncategorized').length;
     const periodLabel = currentYear === null
         ? 'No period selected'
@@ -1451,9 +1505,9 @@ function updateTransactionMeta() {
 
     meta.innerHTML = [
         `<span class="meta-pill">${periodLabel}</span>`,
-        `<span class="meta-pill">${totalCount} transaction${totalCount === 1 ? '' : 's'}</span>`,
-        `<span class="meta-pill">${visibleTransactions.filter(txn => importedTransactions.includes(txn)).length} imported</span>`,
-        `<span class="meta-pill">${visibleTransactions.filter(txn => manualTransactions.includes(txn)).length} manual</span>`,
+        `<span class="meta-pill">${visibleCount} shown of ${totalCount}</span>`,
+        `<span class="meta-pill">${visibleTransactions.filter(txn => importedTransactions.includes(txn)).length} imported shown</span>`,
+        `<span class="meta-pill">${visibleTransactions.filter(txn => manualTransactions.includes(txn)).length} manual shown</span>`,
         `<span class="meta-pill">${uncategorizedCount} uncategorized</span>`
     ].join('');
 }
@@ -1504,10 +1558,13 @@ function displayTransactions() {
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    const filteredTransactions = allTransactions.filter(transactionMatchesCurrentPeriod);
+    const filteredTransactions = getFilteredTransactions();
 
     if (filteredTransactions.length === 0) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No transactions yet. Import a file or add one manually to get started.</td></tr>';
+        const periodTransactions = allTransactions.filter(transactionMatchesCurrentPeriod);
+        tbody.innerHTML = periodTransactions.length === 0
+            ? '<tr class="empty-row"><td colspan="5">No transactions yet. Import a file or add one manually to get started.</td></tr>'
+            : '<tr class="empty-row"><td colspan="5">No transactions match the current search and filters.</td></tr>';
         updateTransactionMeta();
         return;
     }
@@ -2000,6 +2057,11 @@ function attachNavigationListeners() {
     document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
     document.getElementById('export-backup-btn').addEventListener('click', exportBackup);
     document.getElementById('import-backup-file').addEventListener('change', event => importBackupFile(event.target.files[0]));
+    ['transaction-search', 'transaction-category-filter', 'transaction-type-filter', 'transaction-source-filter', 'transaction-min-amount', 'transaction-max-amount'].forEach(id => {
+        document.getElementById(id).addEventListener('input', displayTransactions);
+        document.getElementById(id).addEventListener('change', displayTransactions);
+    });
+    document.getElementById('clear-transaction-filters').addEventListener('click', clearTransactionFilters);
     document.getElementById('profile-shared-budget').addEventListener('change', toggleProfileSharedFields);
     document.getElementById('save-profile-btn').addEventListener('click', () => {
         const name = document.getElementById('profile-name').value.trim();

@@ -852,6 +852,31 @@ table,
     margin-bottom: 16px;
 }
 
+.transaction-search-panel {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.3fr) minmax(150px, 1fr) minmax(140px, 0.9fr) minmax(130px, 0.8fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) auto;
+    gap: 10px;
+    margin: 14px 0;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface-alt);
+}
+
+.transaction-search-panel input,
+.transaction-search-panel select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.transaction-search-panel .secondary-button {
+    margin-top: 0;
+}
+
 .meta-pill {
     background: rgba(47, 111, 237, 0.08);
     color: var(--blue-deep);
@@ -1062,6 +1087,8 @@ body.dark-mode .recurring-add-form input,
 body.dark-mode .recurring-add-form select,
 body.dark-mode .manual-recurring-option select,
 body.dark-mode .backup-format-label select,
+body.dark-mode .transaction-search-panel input,
+body.dark-mode .transaction-search-panel select,
 body.dark-mode .category-row input {
     background: rgba(9, 19, 31, 0.76);
     color: var(--text);
@@ -1091,7 +1118,8 @@ body.dark-mode .nav-btn.active {
     .category-add-form,
     .recurring-add-form,
     .category-row,
-    .recurring-row {
+    .recurring-row,
+    .transaction-search-panel {
         grid-template-columns: 1fr;
     }
 }
