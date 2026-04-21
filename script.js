@@ -1161,6 +1161,15 @@ function calculateBreakdown(isJoeView = false) {
         return `<span style="color:${color};font-weight:bold;">${value.toFixed(1)}%</span>`;
     }
 
+    function hasActivityForKey(collectionKey, key) {
+        if ((collectionKey[key] || 0) !== 0) return true;
+        return visibleMonths.some(month => (monthlyData[month][collectionKey === totalIncomeSources ? 'incomeSources' : collectionKey === totalNeedsSubcategories ? 'needsSubcategories' : 'wantsSubcategories'][key] || 0) !== 0);
+    }
+
+    const activeIncomeSources = Object.keys(incomeSources).filter(src => hasActivityForKey(totalIncomeSources, src));
+    const activeNeedsSubcategories = Object.keys(needsSubcategories).filter(sub => hasActivityForKey(totalNeedsSubcategories, sub));
+    const activeWantsSubcategories = Object.keys(wantsSubcategories).filter(sub => hasActivityForKey(totalWantsSubcategories, sub));
+
     const periodLabel = currentMonth === 'all' ? `${currentYear}` : `${visibleMonths[0]} ${currentYear}`;
     const title = `${getCurrentBreakdownLabel(isJoeView)} ${periodLabel} Breakdown`;
 
@@ -1170,43 +1179,53 @@ function calculateBreakdown(isJoeView = false) {
 
     const addGroup = label => tableHTML += `<tr class="category-group"><td colspan="${visibleMonths.length + 3}">${label}</td></tr>`;
 
-    addGroup('Income Sources');
-    Object.keys(incomeSources).forEach(src => {
-        tableHTML += `<tr><td>${src}</td>`;
-        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].incomeSources[src])}</td>`);
-        tableHTML += `<td>$${formatMoney(totalIncomeSources[src] / numMonths)}</td><td>$${formatMoney(totalIncomeSources[src])}</td></tr>`;
-    });
-    tableHTML += `<tr class="category-group"><td>Total Income</td>`;
-    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].income)}</td>`);
-    tableHTML += `<td>$${formatMoney(avgIncome)}</td><td>$${formatMoney(totalIncome)}</td></tr>`;
+    if (activeIncomeSources.length > 0 || totalIncome !== 0) {
+        addGroup('Income Sources');
+        activeIncomeSources.forEach(src => {
+            tableHTML += `<tr><td>${src}</td>`;
+            visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].incomeSources[src])}</td>`);
+            tableHTML += `<td>$${formatMoney(totalIncomeSources[src] / numMonths)}</td><td>$${formatMoney(totalIncomeSources[src])}</td></tr>`;
+        });
+        tableHTML += `<tr class="category-group"><td>Total Income</td>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].income)}</td>`);
+        tableHTML += `<td>$${formatMoney(avgIncome)}</td><td>$${formatMoney(totalIncome)}</td></tr>`;
+    }
 
-    addGroup('Needs');
-    Object.keys(needsSubcategories).forEach(sub => {
-        tableHTML += `<tr><td>${sub}</td>`;
-        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needsSubcategories[sub])}</td>`);
-        tableHTML += `<td>$${formatMoney(totalNeedsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalNeedsSubcategories[sub])}</td></tr>`;
-    });
-    tableHTML += `<tr class="category-group"><td>Total Needs</td>`;
-    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(monthlyData[m].needsPercent, 50, true)})</td>`);
-    tableHTML += `<td>$${formatMoney(avgNeeds)} (${colorPercent(avgNeedsPct, 50, true)})</td><td>$${formatMoney(totalNeeds)}</td></tr>`;
+    if (activeNeedsSubcategories.length > 0 || totalNeeds !== 0) {
+        addGroup('Needs');
+        activeNeedsSubcategories.forEach(sub => {
+            tableHTML += `<tr><td>${sub}</td>`;
+            visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needsSubcategories[sub])}</td>`);
+            tableHTML += `<td>$${formatMoney(totalNeedsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalNeedsSubcategories[sub])}</td></tr>`;
+        });
+        tableHTML += `<tr class="category-group"><td>Total Needs</td>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needs)} (${colorPercent(monthlyData[m].needsPercent, 50, true)})</td>`);
+        tableHTML += `<td>$${formatMoney(avgNeeds)} (${colorPercent(avgNeedsPct, 50, true)})</td><td>$${formatMoney(totalNeeds)}</td></tr>`;
+    }
 
-    addGroup('Wants');
-    Object.keys(wantsSubcategories).forEach(sub => {
-        tableHTML += `<tr><td>${sub}</td>`;
-        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wantsSubcategories[sub])}</td>`);
-        tableHTML += `<td>$${formatMoney(totalWantsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalWantsSubcategories[sub])}</td></tr>`;
-    });
-    tableHTML += `<tr class="category-group"><td>Total Wants</td>`;
-    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(monthlyData[m].wantsPercent, 30, true)})</td>`);
-    tableHTML += `<td>$${formatMoney(avgWants)} (${colorPercent(avgWantsPct, 30, true)})</td><td>$${formatMoney(totalWants)}</td></tr>`;
+    if (activeWantsSubcategories.length > 0 || totalWants !== 0) {
+        addGroup('Wants');
+        activeWantsSubcategories.forEach(sub => {
+            tableHTML += `<tr><td>${sub}</td>`;
+            visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wantsSubcategories[sub])}</td>`);
+            tableHTML += `<td>$${formatMoney(totalWantsSubcategories[sub] / numMonths)}</td><td>$${formatMoney(totalWantsSubcategories[sub])}</td></tr>`;
+        });
+        tableHTML += `<tr class="category-group"><td>Total Wants</td>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wants)} (${colorPercent(monthlyData[m].wantsPercent, 30, true)})</td>`);
+        tableHTML += `<td>$${formatMoney(avgWants)} (${colorPercent(avgWantsPct, 30, true)})</td><td>$${formatMoney(totalWants)}</td></tr>`;
+    }
 
-    tableHTML += `<tr class="category-group"><td>Total Expenses</td>`;
-    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].expenses)}</td>`);
-    tableHTML += `<td>$${formatMoney(avgNeeds + avgWants)}</td><td>$${formatMoney(totalExpenses)}</td></tr>`;
+    if (totalExpenses !== 0) {
+        tableHTML += `<tr class="category-group"><td>Total Expenses</td>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].expenses)}</td>`);
+        tableHTML += `<td>$${formatMoney(avgNeeds + avgWants)}</td><td>$${formatMoney(totalExpenses)}</td></tr>`;
+    }
 
-    tableHTML += `<tr class="category-group"><td>Net Income</td>`;
-    visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].netIncome)} (${colorPercent(monthlyData[m].netPercent, 20, false)})</td>`);
-    tableHTML += `<td>$${formatMoney(avgIncome - (avgNeeds + avgWants))} (${colorPercent(avgNetPercent, 20, false)})</td><td>$${formatMoney(totalIncome - totalExpenses)}</td></tr>`;
+    if (totalIncome !== 0 || totalExpenses !== 0) {
+        tableHTML += `<tr class="category-group"><td>Net Income</td>`;
+        visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].netIncome)} (${colorPercent(monthlyData[m].netPercent, 20, false)})</td>`);
+        tableHTML += `<td>$${formatMoney(avgIncome - (avgNeeds + avgWants))} (${colorPercent(avgNetPercent, 20, false)})</td><td>$${formatMoney(totalIncome - totalExpenses)}</td></tr>`;
+    }
 
     tableHTML += '</tbody></table></div>';
     document.getElementById('monthly-breakdown').innerHTML = tableHTML;
