@@ -69,7 +69,41 @@
                                     <h3 id="home-year-title">This Year</h3>
                                 </div>
                             </div>
+                            <div class="snapshot-tabs">
+                                <button id="snapshot-tab-overview" class="snapshot-tab active" data-tab="overview">Overview</button>
+                                <button id="snapshot-tab-charts" class="snapshot-tab" data-tab="charts">Charts</button>
+                                <button id="snapshot-tab-comparisons" class="snapshot-tab" data-tab="comparisons">Comparisons</button>
+                            </div>
+                            <div id="snapshot-overview-panel" class="snapshot-panel active">
                             <div id="home-insight-list" class="insight-list"></div>
+                            </div>
+                            <div id="snapshot-charts-panel" class="snapshot-panel">
+                                <div class="chart-grid">
+                                    <div class="chart-card">
+                                        <h4>Budget Mix</h4>
+                                        <div class="donut-wrap">
+                                            <div id="budget-donut" class="budget-donut">
+                                                <div class="budget-donut-center">
+                                                    <strong id="budget-donut-total">$0</strong>
+                                                    <span>Avg Income</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="chart-legend">
+                                            <div class="legend-item"><span class="legend-swatch needs"></span><span id="legend-needs">Needs 0%</span></div>
+                                            <div class="legend-item"><span class="legend-swatch wants"></span><span id="legend-wants">Wants 0%</span></div>
+                                            <div class="legend-item"><span class="legend-swatch savings"></span><span id="legend-savings">Savings 0%</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="chart-card">
+                                        <h4>Target Comparison</h4>
+                                        <div id="comparison-bars" class="comparison-bars"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="snapshot-comparisons-panel" class="snapshot-panel">
+                                <div id="comparison-cards" class="comparison-card-grid"></div>
+                            </div>
                         </section>
 
                         <section class="panel panel-accent">

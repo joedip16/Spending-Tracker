@@ -14,6 +14,7 @@ let isJoeViewActive = false;
 let hasCalculatedBreakdown = false;
 let currentPage = 'home';
 let currentProfile = null;
+let currentSnapshotTab = 'overview';
 
 // History for undo/redo
 let history = [];
@@ -120,6 +121,16 @@ function closeProfileModal() {
 function toggleProfileSharedFields() {
     const shared = document.getElementById('profile-shared-budget').checked;
     document.getElementById('profile-shared-fields').style.display = shared ? 'block' : 'none';
+}
+
+function switchSnapshotTab(tab) {
+    currentSnapshotTab = tab;
+    document.querySelectorAll('.snapshot-tab').forEach(button => {
+        button.classList.toggle('active', button.dataset.tab === tab);
+    });
+    document.querySelectorAll('.snapshot-panel').forEach(panel => {
+        panel.classList.toggle('active', panel.id === `snapshot-${tab}-panel`);
+    });
 }
 
 function saveState(description = "Change") {
@@ -628,6 +639,50 @@ function renderHomeDashboard() {
         `<div class="insight-item"><strong>$${formatMoney(snapshot.avgNeeds + snapshot.avgWants)}</strong><span>Average monthly spending on needs and wants combined.</span></div>`,
         `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch months or years and inspect the full ${getSharedViewLabel().toLowerCase()} breakdown.</span></div>`
     ].join('');
+
+    const donut = document.getElementById('budget-donut');
+    const needs = Math.max(snapshot.avgNeedsPct, 0);
+    const wants = Math.max(snapshot.avgWantsPct, 0);
+    const savings = Math.max(snapshot.avgNetPercent, 0);
+    donut.style.background = `conic-gradient(
+        var(--needs) 0 ${needs}%,
+        var(--wants) ${needs}% ${Math.min(needs + wants, 100)}%,
+        var(--savings) ${Math.min(needs + wants, 100)}% ${Math.min(needs + wants + savings, 100)}%,
+        rgba(122, 141, 168, 0.14) ${Math.min(needs + wants + savings, 100)}% 100%
+    )`;
+    document.getElementById('budget-donut-total').textContent = `$${formatMoney(snapshot.avgIncome)}`;
+    document.getElementById('legend-needs').textContent = `Needs ${snapshot.avgNeedsPct.toFixed(1)}%`;
+    document.getElementById('legend-wants').textContent = `Wants ${snapshot.avgWantsPct.toFixed(1)}%`;
+    document.getElementById('legend-savings').textContent = `Savings ${snapshot.avgNetPercent.toFixed(1)}%`;
+
+    document.getElementById('comparison-bars').innerHTML = [
+        { label: 'Needs', value: snapshot.avgNeedsPct, target: 50, className: 'needs' },
+        { label: 'Wants', value: snapshot.avgWantsPct, target: 30, className: 'wants' },
+        { label: 'Savings', value: snapshot.avgNetPercent, target: 20, className: 'savings' }
+    ].map(item => `
+        <div class="comparison-row">
+            <span class="comparison-copy">${item.label}</span>
+            <div class="comparison-track">
+                <div class="comparison-fill ${item.className}" style="width:${Math.min(Math.max(item.value, 0), 100)}%"></div>
+            </div>
+            <span class="comparison-value">${item.value.toFixed(1)}%</span>
+        </div>
+    `).join('');
+
+    const strongestCategory = [
+        { label: 'Needs', value: snapshot.avgNeedsPct },
+        { label: 'Wants', value: snapshot.avgWantsPct },
+        { label: 'Savings', value: snapshot.avgNetPercent }
+    ].sort((a, b) => b.value - a.value)[0];
+
+    document.getElementById('comparison-cards').innerHTML = [
+        `<div class="comparison-card"><p class="panel-kicker">Largest Share</p><strong>${strongestCategory.label}</strong><span>${strongestCategory.value.toFixed(1)}% of income in this period.</span></div>`,
+        `<div class="comparison-card"><p class="panel-kicker">Target Gap</p><strong>${(snapshot.avgNetPercent - 20).toFixed(1)} pts</strong><span>Difference from the 20% savings target.</span></div>`,
+        `<div class="comparison-card"><p class="panel-kicker">Needs vs Wants</p><strong>${(snapshot.avgNeeds - snapshot.avgWants >= 0 ? '+' : '')}$${formatMoney(snapshot.avgNeeds - snapshot.avgWants)}</strong><span>Average monthly difference between needs and wants.</span></div>`,
+        `<div class="comparison-card"><p class="panel-kicker">Spending Ratio</p><strong>${snapshot.avgWants === 0 ? '—' : `${(snapshot.avgNeeds / snapshot.avgWants).toFixed(2)}x`}</strong><span>Needs compared with wants during this period.</span></div>`
+    ].join('');
+
+    switchSnapshotTab(currentSnapshotTab);
 }
 
 function updateTransactionMeta() {
@@ -1161,6 +1216,9 @@ function switchPage(page) {
 function attachNavigationListeners() {
     document.querySelectorAll('.nav-btn').forEach(button => {
         button.addEventListener('click', () => switchPage(button.dataset.page));
+    });
+    document.querySelectorAll('.snapshot-tab').forEach(button => {
+        button.addEventListener('click', () => switchSnapshotTab(button.dataset.tab));
     });
 
     document.getElementById('go-to-transactions').addEventListener('click', () => switchPage('transactions'));
