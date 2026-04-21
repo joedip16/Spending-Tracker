@@ -12,11 +12,126 @@ let editingIndex = null;
 let isJoeViewActive = false;
 let hasCalculatedBreakdown = false;
 let currentPage = 'home';
+let currentProfile = null;
 
 // History for undo/redo
 let history = [];
 let historyIndex = -1;
 const MAX_HISTORY = 100;
+
+function getDefaultProfile() {
+    return {
+        name: '',
+        isSharedBudget: false,
+        householdName: ''
+    };
+}
+
+function loadProfile() {
+    const savedProfile = localStorage.getItem('budgetProfile');
+    if (!savedProfile) {
+        currentProfile = getDefaultProfile();
+        return;
+    }
+
+    try {
+        currentProfile = { ...getDefaultProfile(), ...JSON.parse(savedProfile) };
+    } catch (error) {
+        currentProfile = getDefaultProfile();
+    }
+}
+
+function saveProfile(profile) {
+    currentProfile = { ...getDefaultProfile(), ...profile };
+    localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
+    applyProfileToUI();
+}
+
+function hasCompletedProfile() {
+    return Boolean(currentProfile && currentProfile.name.trim());
+}
+
+function getPersonalViewLabel() {
+    const name = currentProfile?.name?.trim();
+    return name ? `${name}'s View` : 'Personal View';
+}
+
+function getSharedViewLabel() {
+    if (!currentProfile?.isSharedBudget) return 'Overall View';
+    const householdName = currentProfile.householdName.trim();
+    return householdName || 'Household View';
+}
+
+function getCurrentBreakdownLabel(isPersonalView) {
+    return isPersonalView ? getPersonalViewLabel() : getSharedViewLabel();
+}
+
+function updateBreakdownButtonLabels() {
+    const calculateButton = document.getElementById('calculate');
+    const toggleButton = document.getElementById('view-toggle');
+
+    if (!calculateButton || !toggleButton) return;
+
+    calculateButton.textContent = `Calculate ${getCurrentBreakdownLabel(isJoeViewActive)} Breakdown`;
+    toggleButton.textContent = isJoeViewActive
+        ? `Switch to ${getSharedViewLabel()}`
+        : `Switch to ${getPersonalViewLabel()}`;
+
+    toggleButton.style.display = currentProfile?.isSharedBudget ? 'inline-block' : 'none';
+}
+
+function updateProfileSummary() {
+    const title = document.getElementById('profile-summary-title');
+    const text = document.getElementById('profile-summary-text');
+    if (!title || !text) return;
+
+    if (!hasCompletedProfile()) {
+        title.textContent = 'Your setup';
+        text.textContent = 'Tell the app a little about who is using it.';
+        return;
+    }
+
+    title.textContent = `${currentProfile.name}'s profile`;
+    text.textContent = currentProfile.isSharedBudget
+        ? `Personal view: ${getPersonalViewLabel()}. Shared view: ${getSharedViewLabel()}.`
+        : `Using a single-user setup with ${getSharedViewLabel()} as the main breakdown view.`;
+}
+
+function applyProfileToUI() {
+    const eyebrow = document.getElementById('app-eyebrow');
+    if (eyebrow) {
+        eyebrow.textContent = hasCompletedProfile()
+            ? `${currentProfile.name}'s Budget Companion`
+            : 'Budget Companion';
+    }
+
+    updateBreakdownButtonLabels();
+    updateProfileSummary();
+    renderHomeDashboard();
+}
+
+function syncProfileForm() {
+    document.getElementById('profile-name').value = currentProfile?.name || '';
+    document.getElementById('profile-shared-budget').checked = Boolean(currentProfile?.isSharedBudget);
+    document.getElementById('profile-household-name').value = currentProfile?.householdName || '';
+    toggleProfileSharedFields();
+}
+
+function openProfileModal(isFirstRun = false) {
+    document.getElementById('profile-modal-title').textContent = isFirstRun ? 'Set up your profile' : 'Edit your profile';
+    syncProfileForm();
+    document.getElementById('profile-modal').style.display = 'flex';
+    document.getElementById('profile-name').focus();
+}
+
+function closeProfileModal() {
+    document.getElementById('profile-modal').style.display = 'none';
+}
+
+function toggleProfileSharedFields() {
+    const shared = document.getElementById('profile-shared-budget').checked;
+    document.getElementById('profile-shared-fields').style.display = shared ? 'block' : 'none';
+}
 
 function saveState(description = "Change") {
     const state = {
@@ -64,6 +179,8 @@ function updateUndoRedoButtons() {
 
 // Load persisted data
 function loadPersistedData() {
+    loadProfile();
+
     const savedImported = localStorage.getItem('importedTransactions');
     if (savedImported) importedTransactions = JSON.parse(savedImported);
 
@@ -74,6 +191,7 @@ function loadPersistedData() {
 
     const darkMode = localStorage.getItem('darkMode') === 'true';
     setDarkMode(darkMode);
+    applyProfileToUI();
 
     if (allTransactions.length > 0) updateTransactions();
 
@@ -466,7 +584,7 @@ function renderHomeDashboard() {
     const snapshot = buildBudgetSnapshot(homeYear, false);
     if (!snapshot) return;
 
-    document.getElementById('home-subtitle').textContent = `Live joint snapshot for ${homeYear}.`;
+    document.getElementById('home-subtitle').textContent = `Live ${getSharedViewLabel().toLowerCase()} snapshot for ${homeYear}.`;
     document.getElementById('home-year-title').textContent = `${homeYear} Snapshot`;
     document.getElementById('home-wants-percent').textContent = `${snapshot.avgWantsPct.toFixed(1)}%`;
     document.getElementById('home-needs-percent').textContent = `${snapshot.avgNeedsPct.toFixed(1)}%`;
@@ -481,7 +599,7 @@ function renderHomeDashboard() {
     document.getElementById('home-insight-list').innerHTML = [
         `<div class="insight-item"><strong>$${formatMoney(snapshot.avgIncome)}</strong><span>Average monthly income across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.</span></div>`,
         `<div class="insight-item"><strong>$${formatMoney(snapshot.avgNeeds + snapshot.avgWants)}</strong><span>Average monthly spending on needs and wants combined.</span></div>`,
-        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch years and inspect the full breakdown.</span></div>`
+        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch years and inspect the full ${getSharedViewLabel().toLowerCase()} breakdown.</span></div>`
     ].join('');
 }
 
@@ -860,9 +978,7 @@ document.getElementById('process').addEventListener('click', function() {
             updateTransactions();
 
             document.getElementById('loading').style.display = 'none';
-
-            document.getElementById('calculate').textContent = 'Calculate Joint Breakdown';
-            document.getElementById('view-toggle').textContent = 'Switch to Joe\'s View';
+            updateBreakdownButtonLabels();
             switchPage('transactions');
             document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
 
@@ -889,8 +1005,7 @@ function attachViewToggleListener() {
     toggle.onclick = () => {
         isJoeViewActive = !isJoeViewActive;
         calculateBreakdown(isJoeViewActive);
-        toggle.textContent = isJoeViewActive ? "Switch to Joint View" : "Switch to Joe's View";
-        document.getElementById('calculate').textContent = isJoeViewActive ? 'Calculate Joe\'s Breakdown' : 'Calculate Joint Breakdown';
+        updateBreakdownButtonLabels();
     };
 }
 
@@ -912,6 +1027,31 @@ function attachNavigationListeners() {
     document.getElementById('go-to-transactions').addEventListener('click', () => switchPage('transactions'));
     document.getElementById('settings-dark-mode').addEventListener('change', event => {
         setDarkMode(event.target.checked);
+    });
+    document.getElementById('profile-shared-budget').addEventListener('change', toggleProfileSharedFields);
+    document.getElementById('save-profile-btn').addEventListener('click', () => {
+        const name = document.getElementById('profile-name').value.trim();
+        const isSharedBudget = document.getElementById('profile-shared-budget').checked;
+        const householdName = document.getElementById('profile-household-name').value.trim();
+
+        if (!name) {
+            alert('Please enter your name to create your profile.');
+            return;
+        }
+
+        saveProfile({
+            name,
+            isSharedBudget,
+            householdName
+        });
+
+        if (!isSharedBudget) isJoeViewActive = false;
+        updateBreakdownButtonLabels();
+        closeProfileModal();
+    });
+    document.getElementById('edit-profile-btn').addEventListener('click', () => {
+        switchPage('settings');
+        openProfileModal(false);
     });
 }
 
@@ -957,7 +1097,7 @@ function calculateBreakdown(isJoeView = false) {
         return `<span style="color:${color};font-weight:bold;">${value.toFixed(1)}%</span>`;
     }
 
-    const title = isJoeView ? `Joe's ${currentYear} Breakdown` : `Joint ${currentYear} Breakdown`;
+    const title = `${getCurrentBreakdownLabel(isJoeView)} ${currentYear} Breakdown`;
 
     let tableHTML = `<h2>${title}</h2><div class="table-wrapper"><table><thead><tr><th>Category</th>`;
     months.forEach(m => tableHTML += `<th>${m}</th>`);
@@ -1061,4 +1201,5 @@ window.addEventListener('load', () => {
     attachViewToggleListener();
     renderHomeDashboard();
     switchPage('home');
+    if (!hasCompletedProfile()) openProfileModal(true);
 });
