@@ -608,12 +608,17 @@ function renderRecurringManager() {
 
         return `
             <div class="recurring-row">
-                <div>
+                <div class="recurring-main">
                     <strong>${escapeHtml(item.description)}</strong>
-                    <p>${formatCategoryType(item.category)} · ${item.purchaseType === 'joint' ? 'Joint' : 'Single'} · ${formatRecurringFrequency(item.frequency)} · Starts ${escapeHtml(getRecurringStartDate(item))}</p>
+                    <div class="recurring-detail-pills">
+                        <span>${formatCategoryType(item.category)}</span>
+                        <span>${item.purchaseType === 'joint' ? 'Joint' : 'Single'}</span>
+                        <span>${formatRecurringFrequency(item.frequency)}</span>
+                        <span>Starts ${escapeHtml(getRecurringStartDate(item))}</span>
+                    </div>
                     <span>${occurrenceCount} generated transaction${occurrenceCount === 1 ? '' : 's'}</span>
                 </div>
-                <strong>${amountLabel}</strong>
+                <strong class="recurring-amount">${amountLabel}</strong>
                 <button class="delete-recurring-btn danger-button" data-id="${escapeHtml(item.id)}">Delete</button>
             </div>
         `;
@@ -1554,6 +1559,141 @@ function renderBudgetTrendChart(yearSnapshot, months) {
     `;
 }
 
+function getPreviousMonthName(monthName) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const index = months.indexOf(monthName);
+    return index > 0 ? months[index - 1] : null;
+}
+
+function getLatestActiveMonth(months, monthlyDataSet) {
+    return [...months].reverse().find(month => {
+        const data = monthlyDataSet[month];
+        return data && (data.income > 0 || data.expenses > 0);
+    }) || months[months.length - 1];
+}
+
+function getTopCategoryChange(currentCategories, previousCategories) {
+    const candidates = Object.keys(currentCategories)
+        .map(name => {
+            const current = currentCategories[name] || 0;
+            const previous = previousCategories[name] || 0;
+            if (current <= 0 || previous <= 0) return null;
+            return {
+                name,
+                current,
+                previous,
+                changePercent: ((current - previous) / previous) * 100
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+
+    return candidates[0] || null;
+}
+
+function hasThreeMonthImprovement(months, monthlyDataSet, key, direction = 'up') {
+    if (months.length < 3) return false;
+    const lastThree = months.slice(-3).map(month => monthlyDataSet[month]?.[key] || 0);
+    return direction === 'up'
+        ? lastThree[0] < lastThree[1] && lastThree[1] < lastThree[2]
+        : lastThree[0] > lastThree[1] && lastThree[1] > lastThree[2];
+}
+
+function buildHomeInsights(snapshot, yearSnapshot, selectedMonths, goals, activeViewLabel, homeYear) {
+    const chartMonths = getYearChartMonths(homeYear);
+    const currentMonthName = currentMonth === 'all'
+        ? getLatestActiveMonth(chartMonths, yearSnapshot.monthlyData)
+        : selectedMonths[0];
+    const currentData = yearSnapshot.monthlyData[currentMonthName] || snapshot.monthlyData[currentMonthName];
+    const previousMonthName = getPreviousMonthName(currentMonthName);
+    const previousData = previousMonthName ? yearSnapshot.monthlyData[previousMonthName] : null;
+    const insights = [];
+
+    const wantsGoalAmount = snapshot.avgIncome * goals.wants / 100;
+    const needsGoalAmount = snapshot.avgIncome * goals.needs / 100;
+    const wantsDelta = wantsGoalAmount - snapshot.avgWants;
+    const needsDelta = needsGoalAmount - snapshot.avgNeeds;
+    const savingsGap = snapshot.avgNetPercent - goals.savings;
+
+    insights.push({
+        tone: wantsDelta >= 0 ? 'good' : 'warning',
+        title: wantsDelta >= 0 ? `$${formatMoney(wantsDelta)} under Wants budget` : `$${formatMoney(Math.abs(wantsDelta))} over Wants budget`,
+        copy: `Your average Wants spending is ${snapshot.avgWantsPct.toFixed(1)}% against a ${goals.wants}% goal.`
+    });
+
+    insights.push({
+        tone: needsDelta >= 0 ? 'good' : 'warning',
+        title: needsDelta >= 0 ? `Needs are $${formatMoney(needsDelta)} under goal` : `Needs are trending ${Math.abs(snapshot.avgNeedsPct - goals.needs).toFixed(1)} pts high`,
+        copy: `Needs are ${snapshot.avgNeedsPct.toFixed(1)}% of income for this ${activeViewLabel.toLowerCase()} view.`
+    });
+
+    insights.push({
+        tone: savingsGap >= 0 ? 'good' : 'warning',
+        title: savingsGap >= 0 ? `Savings beat goal by ${savingsGap.toFixed(1)} pts` : `Savings are ${Math.abs(savingsGap).toFixed(1)} pts below goal`,
+        copy: `Current savings rate is ${snapshot.avgNetPercent.toFixed(1)}% versus your ${goals.savings}% goal.`
+    });
+
+    if (currentData && currentData.wants > currentData.needs) {
+        insights.push({
+            tone: 'warning',
+            title: 'Wants are higher than Needs',
+            copy: `${currentMonthName} Wants spending is $${formatMoney(currentData.wants - currentData.needs)} above Needs.`
+        });
+    }
+
+    if (previousData) {
+        const wantsChange = previousData.wants > 0 ? ((currentData.wants - previousData.wants) / previousData.wants) * 100 : null;
+        if (wantsChange !== null && Math.abs(wantsChange) >= 10) {
+            insights.push({
+                tone: wantsChange <= 0 ? 'good' : 'warning',
+                title: `Wants ${wantsChange > 0 ? 'up' : 'down'} ${Math.abs(wantsChange).toFixed(0)}% from last month`,
+                copy: `${currentMonthName} Wants: $${formatMoney(currentData.wants)} vs ${previousMonthName}: $${formatMoney(previousData.wants)}.`
+            });
+        }
+
+        const categoryChange = getTopCategoryChange(
+            { ...currentData.needsSubcategories, ...currentData.wantsSubcategories },
+            { ...previousData.needsSubcategories, ...previousData.wantsSubcategories }
+        );
+        if (categoryChange && Math.abs(categoryChange.changePercent) >= 15) {
+            insights.push({
+                tone: categoryChange.changePercent <= 0 ? 'good' : 'warning',
+                title: `${categoryChange.name} ${categoryChange.changePercent > 0 ? 'up' : 'down'} ${Math.abs(categoryChange.changePercent).toFixed(0)}%`,
+                copy: `$${formatMoney(categoryChange.current)} this month vs $${formatMoney(categoryChange.previous)} last month.`
+            });
+        }
+    }
+
+    const activeTrendMonths = chartMonths.filter(month => {
+        const data = yearSnapshot.monthlyData[month];
+        return data && (data.income > 0 || data.expenses > 0);
+    });
+    if (hasThreeMonthImprovement(activeTrendMonths, yearSnapshot.monthlyData, 'netPercent', 'up')) {
+        insights.push({
+            tone: 'good',
+            title: 'Savings rate improved three months in a row',
+            copy: 'Your savings trend is moving in the right direction.'
+        });
+    }
+    if (hasThreeMonthImprovement(activeTrendMonths, yearSnapshot.monthlyData, 'needsPercent', 'down')) {
+        insights.push({
+            tone: 'good',
+            title: 'Needs share improved three months in a row',
+            copy: 'Needs are taking up less of income over the last three active months.'
+        });
+    }
+
+    if (insights.length < 4) {
+        insights.push({
+            tone: 'neutral',
+            title: `$${formatMoney(snapshot.avgIncome)} average monthly income`,
+            copy: `Calculated across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.`
+        });
+    }
+
+    return insights.slice(0, 6);
+}
+
 function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
     if (year === null) return null;
 
@@ -1713,11 +1853,13 @@ function renderHomeDashboard() {
     document.getElementById('home-needs-bar').style.width = `${Math.min(snapshot.avgNeedsPct, 100)}%`;
     document.getElementById('home-savings-bar').style.width = `${Math.min(Math.max(snapshot.avgNetPercent, 0), 100)}%`;
 
-    document.getElementById('home-insight-list').innerHTML = [
-        `<div class="insight-item"><strong>$${formatMoney(snapshot.avgIncome)}</strong><span>Average monthly income across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.</span></div>`,
-        `<div class="insight-item"><strong>$${formatMoney(snapshot.avgNeeds + snapshot.avgWants)}</strong><span>Average monthly spending on needs and wants combined.</span></div>`,
-        `<div class="insight-item"><strong>${availableYears.length} tracked year${availableYears.length === 1 ? '' : 's'}</strong><span>Use the Transactions tab to switch months or years and inspect the full ${activeViewLabel.toLowerCase()} breakdown.</span></div>`
-    ].join('');
+    const homeInsights = buildHomeInsights(snapshot, yearSnapshot, getSelectedMonths(), goals, activeViewLabel, homeYear);
+    document.getElementById('home-insight-list').innerHTML = homeInsights.map(insight => `
+        <div class="insight-item ${insight.tone}">
+            <strong>${insight.title}</strong>
+            <span>${insight.copy}</span>
+        </div>
+    `).join('');
 
     const donut = document.getElementById('budget-donut');
     const needs = Math.max(snapshot.avgNeedsPct, 0);
@@ -2522,15 +2664,15 @@ function calculateBreakdown(isJoeView = false) {
     document.getElementById('totals-text').innerHTML = `
         <div class="progress-container">
             <div class="progress-label"><span>Needs (target ≤${goals.needs}%)</span><span>${avgNeedsPct.toFixed(1)}%</span></div>
-            <div class="progress-bar"><div class="progress-fill needs" style="width: ${Math.min(avgNeedsPct, 100)}%">${avgNeedsPct.toFixed(1)}%</div></div>
+            <div class="progress-bar"><div class="progress-fill needs" style="width: ${Math.min(avgNeedsPct, 100)}%"></div><span class="progress-bar-value">${avgNeedsPct.toFixed(1)}%</span></div>
         </div>
         <div class="progress-container">
             <div class="progress-label"><span>Wants (target ≤${goals.wants}%)</span><span>${avgWantsPct.toFixed(1)}%</span></div>
-            <div class="progress-bar"><div class="progress-fill wants" style="width: ${Math.min(avgWantsPct, 100)}%">${avgWantsPct.toFixed(1)}%</div></div>
+            <div class="progress-bar"><div class="progress-fill wants" style="width: ${Math.min(avgWantsPct, 100)}%"></div><span class="progress-bar-value">${avgWantsPct.toFixed(1)}%</span></div>
         </div>
         <div class="progress-container">
             <div class="progress-label"><span>Savings / Debt Paydown (target ≥${goals.savings}%)</span><span>${avgNetPercent.toFixed(1)}%</span></div>
-            <div class="progress-bar"><div class="progress-fill savings" style="width: ${Math.min(Math.max(avgNetPercent, 0), 100)}%">${avgNetPercent.toFixed(1)}%</div></div>
+            <div class="progress-bar"><div class="progress-fill savings" style="width: ${Math.min(Math.max(avgNetPercent, 0), 100)}%"></div><span class="progress-bar-value">${avgNetPercent.toFixed(1)}%</span></div>
         </div>
     `;
 
