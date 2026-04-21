@@ -94,13 +94,6 @@ function updateProfileSummary() {
 }
 
 function applyProfileToUI() {
-    const eyebrow = document.getElementById('app-eyebrow');
-    if (eyebrow) {
-        eyebrow.textContent = hasCompletedProfile()
-            ? `${currentProfile.name}'s Budget Companion`
-            : 'Budget Companion';
-    }
-
     updateBreakdownButtonLabels();
     updateProfileSummary();
     renderHomeDashboard();
@@ -1259,7 +1252,7 @@ document.getElementById('export').addEventListener('click', function() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, 'Monthly Summary');
-    XLSX.writeFile(wb, `50-30-20_Budget_${currentYear}.csv`);
+    XLSX.writeFile(wb, `50-40-30_Budget_Tracker_${currentYear}.csv`);
 });
 
 // Init
