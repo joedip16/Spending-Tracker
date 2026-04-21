@@ -855,6 +855,11 @@ function toggleTransactions() {
     }
 }
 
+function openTransactionsList() {
+    document.getElementById('transactions-container').style.display = 'block';
+    document.getElementById('toggle-arrow').textContent = '▼';
+}
+
 // Year selector
 function populateYearSelector() {
     const select = document.getElementById('year-select');
@@ -949,6 +954,7 @@ function populateTransactionPeriodSelectors() {
         populateMonthSelector();
         populateTransactionPeriodSelectors();
         displayTransactions();
+        openTransactionsList();
         renderHomeDashboard();
         calculateBreakdown(isJoeViewActive);
     };
@@ -958,6 +964,7 @@ function populateTransactionPeriodSelectors() {
         populateMonthSelector();
         populateTransactionPeriodSelectors();
         displayTransactions();
+        openTransactionsList();
         renderHomeDashboard();
         calculateBreakdown(isJoeViewActive);
     };
