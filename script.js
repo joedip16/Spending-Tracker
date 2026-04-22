@@ -25,6 +25,7 @@ let pendingImportFileName = '';
 let pendingImportTransactions = [];
 let pendingImportHeaderRowIndex = 0;
 let firebaseApp = null;
+let firebaseAppCheck = null;
 let firebaseAuth = null;
 let firebaseDb = null;
 let syncUser = null;
@@ -726,6 +727,15 @@ function buildAppStatePayload() {
     };
 }
 
+function buildValidatedCloudPayload() {
+    const payload = buildValidatedCloudPayload();
+    const validated = validateBackupPayload({ data: payload });
+    return {
+        ...validated,
+        updatedAt: payload.updatedAt
+    };
+}
+
 function buildBackupPayload() {
     return {
         appName: '50:40:30 Budget Tracker',
@@ -1005,6 +1015,14 @@ function isFirebaseConfigured() {
     );
 }
 
+function isAppCheckConfigured() {
+    return Boolean(
+        window.firebaseAppCheckEnabled &&
+        window.firebaseAppCheckSiteKey &&
+        !String(window.firebaseAppCheckSiteKey).includes('PASTE_')
+    );
+}
+
 function setSyncStatus(message) {
     const status = document.getElementById('sync-status-text');
     if (status) status.textContent = message;
@@ -1026,6 +1044,11 @@ function getSyncDocRef() {
     return firebaseDb.collection('users').doc(syncUser.uid).collection('budgetTracker').doc('appState');
 }
 
+function getCloudBackupCollectionRef() {
+    if (!firebaseDb || !syncUser) return null;
+    return firebaseDb.collection('users').doc(syncUser.uid).collection('cloudBackups');
+}
+
 function queueCloudSync() {
     if (isApplyingCloudState || !syncUser || !firebaseDb) return;
     clearTimeout(syncDebounceTimer);
@@ -1042,7 +1065,7 @@ function pushCloudState() {
     const docRef = getSyncDocRef();
     if (!docRef) return;
 
-    const payload = buildAppStatePayload();
+    const payload = buildValidatedCloudPayload();
     const payloadJson = getComparableCloudState(payload);
     if (payloadJson === lastCloudStateJson) return;
 
@@ -1053,6 +1076,65 @@ function pushCloudState() {
             setSyncStatus(`Synced as ${syncUser.email}.`);
         })
         .catch(error => setSyncStatus(`Sync failed: ${error.message}`));
+}
+
+async function createCloudBackup(reason = 'manual') {
+    const backupsRef = getCloudBackupCollectionRef();
+    if (!backupsRef) {
+        setSyncStatus('Sign in before creating a cloud backup.');
+        return false;
+    }
+
+    const payload = buildValidatedCloudPayload();
+    const backup = {
+        version: 1,
+        reason,
+        createdAt: new Date().toISOString(),
+        appState: payload
+    };
+
+    try {
+        setSyncStatus('Creating cloud backup...');
+        await backupsRef.add(backup);
+        setSyncStatus(`Cloud backup created for ${syncUser.email}.`);
+        return true;
+    } catch (error) {
+        setSyncStatus(`Cloud backup failed: ${error.message}`);
+        return false;
+    }
+}
+
+async function restoreLatestCloudBackup() {
+    const backupsRef = getCloudBackupCollectionRef();
+    if (!backupsRef) {
+        setSyncStatus('Sign in before restoring a cloud backup.');
+        return;
+    }
+
+    const confirmed = confirm('Restore the latest cloud backup? This will replace the data currently loaded in this browser.');
+    if (!confirmed) return;
+
+    try {
+        setSyncStatus('Looking for latest cloud backup...');
+        const snapshot = await backupsRef.orderBy('createdAt', 'desc').limit(1).get();
+        if (snapshot.empty) {
+            setSyncStatus('No cloud backups found.');
+            alert('No cloud backups found for this account.');
+            return;
+        }
+
+        await createCloudBackup('before-restore');
+        const backup = snapshot.docs[0].data();
+        const restoredData = validateBackupPayload({ data: backup.appState });
+        applyRestoredAppState(restoredData);
+        saveState('Restore cloud backup');
+        queueCloudSync();
+        setSyncStatus(`Restored backup from ${backup.createdAt || 'latest backup'}.`);
+        alert('Latest cloud backup restored.');
+    } catch (error) {
+        setSyncStatus(`Cloud restore failed: ${error.message}`);
+        alert(`Cloud restore failed: ${error.message}`);
+    }
 }
 
 function subscribeToCloudState(user) {
@@ -1104,6 +1186,17 @@ function initFirebaseSync() {
 
     try {
         firebaseApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(window.firebaseConfig);
+        if (isAppCheckConfigured()) {
+            if (!firebase.appCheck) {
+                setSyncStatus('Firebase App Check script did not load. Sync is continuing without App Check.');
+            } else {
+                if (window.firebaseAppCheckDebugToken) {
+                    self.FIREBASE_APPCHECK_DEBUG_TOKEN = window.firebaseAppCheckDebugToken;
+                }
+                firebaseAppCheck = firebase.appCheck();
+                firebaseAppCheck.activate(window.firebaseAppCheckSiteKey, true);
+            }
+        }
         firebaseAuth = firebase.auth();
         firebaseDb = firebase.firestore();
         firebaseAuth.onAuthStateChanged(user => {
@@ -1149,6 +1242,13 @@ function createSyncAccount() {
 
 function signOutOfSync() {
     if (firebaseAuth) firebaseAuth.signOut();
+}
+
+async function deleteUserCloudBackups(userId) {
+    const backupsSnapshot = await firebaseDb.collection('users').doc(userId).collection('cloudBackups').get();
+    const batch = firebaseDb.batch();
+    backupsSnapshot.forEach(doc => batch.delete(doc.ref));
+    if (!backupsSnapshot.empty) await batch.commit();
 }
 
 function clearLocalAppData() {
@@ -1236,6 +1336,7 @@ async function deleteAccountAndData() {
         syncUnsubscribe = null;
 
         await firebaseDb.collection('users').doc(user.uid).collection('budgetTracker').doc('appState').delete();
+        await deleteUserCloudBackups(user.uid);
         await user.delete();
 
         syncUser = null;
@@ -3541,6 +3642,8 @@ function attachNavigationListeners() {
     document.getElementById('sync-sign-in-btn').addEventListener('click', signInForSync);
     document.getElementById('sync-create-account-btn').addEventListener('click', createSyncAccount);
     document.getElementById('sync-now-btn').addEventListener('click', pushCloudState);
+    document.getElementById('create-cloud-backup-btn').addEventListener('click', () => createCloudBackup('manual'));
+    document.getElementById('restore-cloud-backup-btn').addEventListener('click', restoreLatestCloudBackup);
     document.getElementById('sync-sign-out-btn').addEventListener('click', signOutOfSync);
     document.getElementById('delete-account-data-btn').addEventListener('click', deleteAccountAndData);
     document.getElementById('sync-password').addEventListener('keydown', event => {

@@ -2,8 +2,76 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/budgetTracker/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function signedInAs(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validProfile(profile) {
+      return profile is map
+        && profile.keys().hasOnly(['name', 'isSharedBudget', 'householdName'])
+        && profile.name is string
+        && profile.isSharedBudget is bool
+        && profile.householdName is string;
+    }
+
+    function validGoals(goals) {
+      return goals is map
+        && goals.keys().hasOnly(['needs', 'wants', 'savings'])
+        && goals.needs is number
+        && goals.wants is number
+        && goals.savings is number
+        && goals.needs >= 0
+        && goals.wants >= 0
+        && goals.savings >= 0
+        && goals.needs <= 100
+        && goals.wants <= 100
+        && goals.savings <= 100;
+    }
+
+    function validAppState(data) {
+      return data is map
+        && data.keys().hasOnly([
+          'profile',
+          'budgetGoals',
+          'darkMode',
+          'importedTransactions',
+          'manualTransactions',
+          'budgetCategories',
+          'recurringTransactions',
+          'skippedRecurringOccurrences',
+          'currentSnapshotTab',
+          'updatedAt'
+        ])
+        && validProfile(data.profile)
+        && validGoals(data.budgetGoals)
+        && data.darkMode is bool
+        && data.importedTransactions is list
+        && data.manualTransactions is list
+        && data.budgetCategories is map
+        && data.recurringTransactions is list
+        && data.skippedRecurringOccurrences is list
+        && data.currentSnapshotTab is string
+        && data.updatedAt is string;
+    }
+
+    function validCloudBackup(data) {
+      return data is map
+        && data.keys().hasOnly(['version', 'reason', 'createdAt', 'appState'])
+        && data.version is number
+        && data.reason is string
+        && data.createdAt is string
+        && validAppState(data.appState);
+    }
+
+    match /users/{userId}/budgetTracker/appState {
+      allow read, delete: if signedInAs(userId);
+      allow create, update: if signedInAs(userId) && validAppState(request.resource.data);
+    }
+
+    match /users/{userId}/cloudBackups/{backupId} {
+      allow read, delete: if signedInAs(userId);
+      allow create: if signedInAs(userId) && validCloudBackup(request.resource.data);
+      allow update: if false;
     }
   }
 }

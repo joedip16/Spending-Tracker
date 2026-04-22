@@ -6,6 +6,7 @@
       ".firebaserc",
       "firestore.rules",
       "firebase_tools",
+      "*.md",
       ".git/**",
       "**/.*",
       "**/node_modules/**"
