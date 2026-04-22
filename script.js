@@ -88,6 +88,87 @@ const DEFAULT_BUDGET_CATEGORIES = {
     ]
 };
 
+const DEMO_MODE_STORAGE_KEY = 'demoModeActive';
+
+const DEMO_PROFILE = {
+    name: 'Demo User',
+    isSharedBudget: true,
+    householdName: 'Demo Household'
+};
+
+const DEMO_TRANSACTIONS = [
+    ['01/05/2026', 'Demo Paycheck', 3200, 'income', 'single'],
+    ['01/05/2026', 'Partner Paycheck', 2400, 'income', 'joint'],
+    ['01/08/2026', 'Mortgage', -1450, 'needs', 'joint'],
+    ['01/09/2026', 'Groceries', -286.45, 'needs', 'joint'],
+    ['01/11/2026', 'Gas', -51.22, 'needs', 'single'],
+    ['01/14/2026', 'PSE&G', -181.9, 'needs', 'joint'],
+    ['01/18/2026', 'Eating Out', -82.36, 'wants', 'joint'],
+    ['01/21/2026', 'Shopping', -124.64, 'wants', 'single'],
+    ['01/26/2026', 'Netflix Subscription', -21.99, 'wants', 'joint'],
+    ['02/05/2026', 'Demo Paycheck', 3200, 'income', 'single'],
+    ['02/05/2026', 'Partner Paycheck', 2400, 'income', 'joint'],
+    ['02/08/2026', 'Mortgage', -1450, 'needs', 'joint'],
+    ['02/10/2026', 'Groceries', -312.12, 'needs', 'joint'],
+    ['02/13/2026', 'Healthcare', -96.4, 'needs', 'single'],
+    ['02/15/2026', 'Xfinity', -88.2, 'wants', 'joint'],
+    ['02/18/2026', 'Eating Out', -136.75, 'wants', 'joint'],
+    ['02/22/2026', 'Entertainment', -74, 'wants', 'single'],
+    ['03/05/2026', 'Demo Paycheck', 3200, 'income', 'single'],
+    ['03/05/2026', 'Partner Paycheck', 2450, 'income', 'joint'],
+    ['03/08/2026', 'Mortgage', -1450, 'needs', 'joint'],
+    ['03/09/2026', 'Groceries', -344.9, 'needs', 'joint'],
+    ['03/11/2026', 'Car Maintenance', -421.3, 'needs', 'single'],
+    ['03/16/2026', 'Eating Out', -94.5, 'wants', 'joint'],
+    ['03/20/2026', 'Golf', -112, 'wants', 'single'],
+    ['03/25/2026', 'Travel', -260.18, 'wants', 'joint'],
+    ['04/05/2026', 'Demo Paycheck', 3200, 'income', 'single'],
+    ['04/05/2026', 'Partner Paycheck', 2450, 'income', 'joint'],
+    ['04/08/2026', 'Mortgage', -1450, 'needs', 'joint'],
+    ['04/09/2026', 'Groceries', -298.33, 'needs', 'joint'],
+    ['04/12/2026', 'Insurance', -188.6, 'needs', 'single'],
+    ['04/14/2026', 'Tax Returns', 850, 'income', 'single'],
+    ['04/17/2026', 'Eating Out', -68.4, 'wants', 'joint'],
+    ['04/19/2026', 'Activities', -128, 'wants', 'joint'],
+    ['04/20/2026', 'Shopping', -89.17, 'wants', 'single']
+];
+
+const DEMO_RECURRING_TRANSACTIONS = [
+    {
+        id: 'demo-recurring-mortgage',
+        description: 'Mortgage',
+        amount: -1450,
+        category: 'needs',
+        purchaseType: 'joint',
+        frequency: 'monthly',
+        dayOfMonth: 8,
+        startMonth: '2026-05',
+        startDate: '2026-05-08'
+    },
+    {
+        id: 'demo-recurring-netflix',
+        description: 'Netflix Subscription',
+        amount: -21.99,
+        category: 'wants',
+        purchaseType: 'joint',
+        frequency: 'monthly',
+        dayOfMonth: 26,
+        startMonth: '2026-05',
+        startDate: '2026-05-26'
+    },
+    {
+        id: 'demo-recurring-paycheck',
+        description: 'Demo Paycheck',
+        amount: 3200,
+        category: 'income',
+        purchaseType: 'single',
+        frequency: 'monthly',
+        dayOfMonth: 5,
+        startMonth: '2026-05',
+        startDate: '2026-05-05'
+    }
+];
+
 // History for undo/redo
 let history = [];
 let historyIndex = -1;
@@ -1111,6 +1192,10 @@ function markLocalStateUpdated() {
 
 function queueCloudSync() {
     markLocalStateUpdated();
+    if (isDemoModeActive()) {
+        setDemoModeStatus();
+        return;
+    }
     if (isApplyingCloudState || !syncUser || !firebaseDb) return;
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushCloudState, 500);
@@ -1136,8 +1221,25 @@ function hasLocalPersistedBudgetData() {
     );
 }
 
+function isDemoModeActive() {
+    return localStorage.getItem(DEMO_MODE_STORAGE_KEY) === 'true';
+}
+
+function setDemoModeStatus(message) {
+    const status = document.getElementById('demo-mode-status');
+    if (!status) return;
+
+    status.textContent = message || (isDemoModeActive()
+        ? 'Demo mode is active in this browser. Sync is paused until demo data is cleared.'
+        : 'Demo mode is local-only and will not sync while active.');
+}
+
 function pushCloudState() {
     const docRef = getSyncDocRef();
+    if (isDemoModeActive()) {
+        setSyncStatus('Demo mode is active locally. Clear demo data before syncing this account.');
+        return;
+    }
     if (!docRef) return;
 
     const payload = buildValidatedCloudPayload();
@@ -1294,12 +1396,21 @@ function initFirebaseSync() {
             lastCloudStateJson = '';
             updateSyncUi(user);
             if (user) {
+                if (isDemoModeActive()) {
+                    if (syncUnsubscribe) syncUnsubscribe();
+                    syncUnsubscribe = null;
+                    setSyncStatus('Signed in, but demo mode is local-only. Clear demo data before syncing this account.');
+                    setDemoModeStatus('Demo mode is active. Sync is paused so sample data cannot overwrite your real account.');
+                    return;
+                }
                 setSyncStatus(`Signed in as ${user.email}. Syncing...`);
                 subscribeToCloudState(user);
             } else {
                 if (syncUnsubscribe) syncUnsubscribe();
                 syncUnsubscribe = null;
-                setSyncStatus('Sign in to sync this budget across devices.');
+                setSyncStatus(isDemoModeActive()
+                    ? 'Demo mode is active locally. Sync is paused until demo data is cleared.'
+                    : 'Sign in to sync this budget across devices.');
             }
         });
     } catch (error) {
@@ -1312,6 +1423,11 @@ function signInForSync() {
         setSyncStatus('Firebase sync is not configured yet.');
         return;
     }
+    if (isDemoModeActive()) {
+        setSyncStatus('Clear demo data before signing in so sample transactions do not mix with your account.');
+        alert('Demo mode is local-only. Clear demo data before signing in to sync a real budget.');
+        return;
+    }
     const email = document.getElementById('sync-email').value.trim();
     const password = document.getElementById('sync-password').value;
     firebaseAuth.signInWithEmailAndPassword(email, password)
@@ -1321,6 +1437,11 @@ function signInForSync() {
 function createSyncAccount() {
     if (!firebaseAuth) {
         setSyncStatus('Firebase sync is not configured yet.');
+        return;
+    }
+    if (isDemoModeActive()) {
+        setSyncStatus('Clear demo data before creating an account so sample transactions do not sync.');
+        alert('Demo mode is local-only. Clear demo data before creating an account for real synced data.');
         return;
     }
     const email = document.getElementById('sync-email').value.trim();
@@ -1354,7 +1475,8 @@ function clearLocalAppData() {
             'manualTransactions',
             'darkMode',
             'onboardingComplete',
-            'appStateUpdatedAt'
+            'appStateUpdatedAt',
+            DEMO_MODE_STORAGE_KEY
         ].forEach(key => localStorage.removeItem(key));
 
         allTransactions = [];
@@ -1396,6 +1518,97 @@ function clearLocalAppData() {
     } finally {
         isApplyingCloudState = false;
     }
+}
+
+function createDemoTransaction([date, description, amount, category, purchaseType]) {
+    const baseDescription = String(description || '').trim();
+    const finalDescription = purchaseType === 'joint' ? `${baseDescription} (joint)` : baseDescription;
+    return {
+        date,
+        originalCategory: finalDescription,
+        adjustedAmount: Number(amount),
+        category,
+        rawAmount: Number(amount)
+    };
+}
+
+function applyDemoMode() {
+    if (syncUser) {
+        alert('Demo mode is local-only. Sign out before loading sample data so it cannot overwrite synced account data.');
+        setDemoModeStatus('Sign out first to load local demo data safely.');
+        return;
+    }
+
+    if (hasLocalPersistedBudgetData() && !isDemoModeActive()) {
+        const replaceExisting = confirm('Load demo sample data? This replaces the current local budget data in this browser. Export a backup first if you want to keep it.');
+        if (!replaceExisting) return;
+    }
+
+    clearLocalAppData();
+    isApplyingCloudState = true;
+    try {
+        currentProfile = { ...DEMO_PROFILE };
+        budgetGoals = { ...DEFAULT_BUDGET_GOALS };
+        budgetCategories = cloneDefaultCategories();
+        recurringTransactions = JSON.parse(JSON.stringify(DEMO_RECURRING_TRANSACTIONS));
+        skippedRecurringOccurrences = [];
+        importedTransactions = DEMO_TRANSACTIONS.map(createDemoTransaction);
+        manualTransactions = [];
+        allTransactions = [...importedTransactions, ...manualTransactions].sort(compareTransactions);
+        currentYear = 2026;
+        currentMonth = 'all';
+        isJoeViewActive = false;
+        currentSnapshotTab = 'overview';
+        hasCalculatedBreakdown = false;
+        history = [];
+        historyIndex = -1;
+        localStateUpdatedAt = new Date().toISOString();
+
+        localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
+        localStorage.setItem('budgetGoals', JSON.stringify(budgetGoals));
+        localStorage.setItem('budgetCategories', JSON.stringify(budgetCategories));
+        localStorage.setItem('recurringTransactions', JSON.stringify(recurringTransactions));
+        localStorage.setItem('skippedRecurringOccurrences', JSON.stringify(skippedRecurringOccurrences));
+        localStorage.setItem('importedTransactions', JSON.stringify(importedTransactions));
+        localStorage.setItem('manualTransactions', JSON.stringify(manualTransactions));
+        localStorage.setItem('appStateUpdatedAt', localStateUpdatedAt);
+        localStorage.setItem(DEMO_MODE_STORAGE_KEY, 'true');
+        markOnboardingComplete();
+    } finally {
+        isApplyingCloudState = false;
+    }
+
+    applyProfileToUI();
+    syncBudgetGoalForm();
+    updateBudgetGoalTargets();
+    renderCategoryManager();
+    renderRecurringManager();
+    updateTransactions();
+    saveState('Load demo mode');
+    calculateBreakdown(false);
+    switchPage('home');
+    closeOnboarding();
+    setSyncStatus('Demo mode is active locally. Sync is paused until demo data is cleared.');
+    setDemoModeStatus();
+}
+
+function clearDemoMode() {
+    if (!isDemoModeActive()) {
+        alert('Demo mode is not active right now.');
+        return;
+    }
+
+    if (!confirm('Clear demo data from this browser? This removes the sample profile, transactions, goals, and recurring examples.')) return;
+
+    clearLocalAppData();
+    setDemoModeStatus('Demo data cleared. You can start fresh, import transactions, or sign in to sync.');
+    if (syncUser && firebaseDb) {
+        setSyncStatus(`Signed in as ${syncUser.email}. Syncing...`);
+        subscribeToCloudState(syncUser);
+    } else {
+        setSyncStatus('Sign in to sync this budget across devices.');
+    }
+    if (!hasCompletedOnboarding() && !hasCompletedProfile()) openOnboarding();
 }
 
 async function deleteAccountAndData() {
@@ -1675,6 +1888,11 @@ function createOnboardingAccount() {
         setOnboardingSyncStatus('Firebase sync is not ready yet. You can skip and turn it on later in Settings.');
         return;
     }
+    if (isDemoModeActive()) {
+        setOnboardingSyncStatus('Clear demo mode before creating a synced account.');
+        alert('Demo mode is local-only. Clear demo data before creating an account for real synced data.');
+        return;
+    }
 
     const email = document.getElementById('onboarding-email').value.trim();
     const password = document.getElementById('onboarding-password').value;
@@ -1689,6 +1907,11 @@ function createOnboardingAccount() {
 function signInOnboardingAccount() {
     if (!firebaseAuth) {
         setOnboardingSyncStatus('Firebase sync is not ready yet. You can skip and turn it on later in Settings.');
+        return;
+    }
+    if (isDemoModeActive()) {
+        setOnboardingSyncStatus('Clear demo mode before signing in.');
+        alert('Demo mode is local-only. Clear demo data before signing in to sync a real budget.');
         return;
     }
 
@@ -1789,6 +2012,7 @@ function loadPersistedData() {
     updateBudgetGoalTargets();
     renderCategoryManager();
     renderRecurringManager();
+    setDemoModeStatus();
 
     if (allTransactions.length > 0) updateTransactions();
 
@@ -3813,6 +4037,8 @@ function attachNavigationListeners() {
     document.getElementById('restore-cloud-backup-btn').addEventListener('click', restoreLatestCloudBackup);
     document.getElementById('sync-sign-out-btn').addEventListener('click', signOutOfSync);
     document.getElementById('delete-account-data-btn').addEventListener('click', deleteAccountAndData);
+    document.getElementById('load-demo-mode-btn').addEventListener('click', applyDemoMode);
+    document.getElementById('clear-demo-mode-btn').addEventListener('click', clearDemoMode);
     document.getElementById('sync-password').addEventListener('keydown', event => {
         if (event.key === 'Enter') signInForSync();
     });
@@ -3839,6 +4065,7 @@ function attachNavigationListeners() {
     document.getElementById('onboarding-finish-btn').addEventListener('click', () => finishOnboarding('home'));
     document.getElementById('onboarding-import-btn').addEventListener('click', () => finishOnboarding('import'));
     document.getElementById('onboarding-add-transaction-btn').addEventListener('click', () => finishOnboarding('manual'));
+    document.getElementById('onboarding-demo-btn').addEventListener('click', applyDemoMode);
     document.getElementById('onboarding-password').addEventListener('keydown', event => {
         if (event.key === 'Enter') createOnboardingAccount();
     });

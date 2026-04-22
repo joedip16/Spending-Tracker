@@ -415,6 +415,17 @@
                         </div>
                     </section>
 
+                    <section class="panel settings-card demo-card">
+                        <p class="panel-kicker">Reviewer Mode</p>
+                        <h3>Demo Sample Budget</h3>
+                        <p class="panel-copy">Load realistic sample income, Needs, Wants, Savings, goals, and recurring examples so new users can understand the app without importing bank data.</p>
+                        <div class="settings-actions">
+                            <button id="load-demo-mode-btn">Load Demo Data</button>
+                            <button id="clear-demo-mode-btn" class="secondary-button">Clear Demo Data</button>
+                        </div>
+                        <p id="demo-mode-status" class="backup-status">Demo mode is local-only and will not sync while active.</p>
+                    </section>
+
                     <section class="panel settings-card">
                         <p class="panel-kicker">Profile</p>
                         <h3 id="profile-summary-title">Your setup</h3>
@@ -642,6 +653,7 @@
                 <div class="modal-actions onboarding-actions">
                     <button id="onboarding-import-btn">Import Transactions</button>
                     <button id="onboarding-add-transaction-btn" class="secondary-button">Add One Manually</button>
+                    <button id="onboarding-demo-btn" class="secondary-button">Try Demo Mode</button>
                 </div>
             </section>
 
@@ -710,6 +722,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js?v=20260422-appcheck"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260422-import-persist-fix"></script>
+    <script src="script.js?v=20260422-demo-mode"></script>
 </body>
 </html>

@@ -881,7 +881,8 @@ table,
 
 .category-manager-card,
 .recurring-manager-card,
-.backup-card {
+.backup-card,
+.demo-card {
     grid-column: 1 / -1;
 }
 
