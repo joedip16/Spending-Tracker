@@ -2790,6 +2790,57 @@ function findImportHeaderRowIndex(rows) {
     return 0;
 }
 
+function buildGenericHeaders(rows) {
+    const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    return Array.from({ length: maxColumns }, (_, index) => `Column ${index + 1}`);
+}
+
+function looksLikeDateValue(value) {
+    return Boolean(normalizeImportedDate(value));
+}
+
+function looksLikeMoneyValue(value) {
+    if (value === undefined || value === null || String(value).trim() === '') return false;
+    return parseImportedMoney(value) !== 0 || /^[-+]?0+(\.0+)?$/.test(String(value).replace(/[,$()\s]/g, ''));
+}
+
+function guessColumnsFromRows(rows, startIndex = 0) {
+    const maxColumns = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    const sampleRows = rows.slice(startIndex, startIndex + 12);
+    const scores = Array.from({ length: maxColumns }, (_, index) => {
+        let dateScore = 0;
+        let moneyScore = 0;
+        let textScore = 0;
+
+        sampleRows.forEach(row => {
+            const value = row[index];
+            const text = String(value || '').trim();
+            if (!text) return;
+            if (looksLikeDateValue(value)) dateScore++;
+            if (looksLikeMoneyValue(value)) moneyScore++;
+            if (!looksLikeDateValue(value) && !looksLikeMoneyValue(value) && text.length > 2) textScore++;
+        });
+
+        return { index, dateScore, moneyScore, textScore };
+    });
+
+    const dateCol = [...scores].sort((a, b) => b.dateScore - a.dateScore)[0]?.dateScore > 0
+        ? [...scores].sort((a, b) => b.dateScore - a.dateScore)[0].index
+        : -1;
+    const amountCol = [...scores].sort((a, b) => b.moneyScore - a.moneyScore)[0]?.moneyScore > 0
+        ? [...scores].sort((a, b) => b.moneyScore - a.moneyScore)[0].index
+        : -1;
+    const descriptionCol = [...scores]
+        .filter(score => score.index !== dateCol && score.index !== amountCol)
+        .sort((a, b) => b.textScore - a.textScore)[0]?.textScore > 0
+            ? [...scores]
+                .filter(score => score.index !== dateCol && score.index !== amountCol)
+                .sort((a, b) => b.textScore - a.textScore)[0].index
+            : -1;
+
+    return { dateCol, descriptionCol, amountCol, debitCol: -1, creditCol: -1 };
+}
+
 function getBestImportColumnDefaults(headers) {
     const savedMapping = loadSavedImportMapping();
     if (savedMapping && isValidImportMapping(savedMapping)) return savedMapping;
@@ -2820,6 +2871,7 @@ function isValidImportMapping(mapping) {
 function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -1, creditCol = -1) {
     const previewRows = [];
     const selection = { dateCol, descriptionCol, amountCol, debitCol, creditCol };
+    if (!isValidImportMapping(selection)) return previewRows;
 
     for (let i = pendingImportHeaderRowIndex + 1; i < pendingImportRows.length; i++) {
         const rawDate = pendingImportRows[i][dateCol];
@@ -2864,10 +2916,10 @@ function populateImportColumnSelectors(defaults) {
 
     Object.entries(selectors).forEach(([key, select]) => {
         select.innerHTML = '';
-        if (key === 'amount' || key === 'debit' || key === 'credit') {
+        if (key === 'date' || key === 'description' || key === 'amount' || key === 'debit' || key === 'credit') {
             const noneOption = document.createElement('option');
             noneOption.value = -1;
-            noneOption.textContent = key === 'amount' ? 'Use debit/credit columns' : 'Not used';
+            noneOption.textContent = key === 'amount' ? 'Use debit/credit columns' : 'Select column';
             select.appendChild(noneOption);
         }
         pendingImportHeaders.forEach((header, index) => {
@@ -2878,9 +2930,9 @@ function populateImportColumnSelectors(defaults) {
         });
     });
 
-    selectors.date.value = String(defaults.dateCol);
-    selectors.description.value = String(defaults.descriptionCol);
-    selectors.amount.value = String(defaults.amountCol);
+    selectors.date.value = String(defaults.dateCol ?? -1);
+    selectors.description.value = String(defaults.descriptionCol ?? -1);
+    selectors.amount.value = String(defaults.amountCol ?? -1);
     selectors.debit.value = String(defaults.debitCol ?? -1);
     selectors.credit.value = String(defaults.creditCol ?? -1);
 }
@@ -2897,11 +2949,17 @@ function getImportColumnSelection() {
 
 function renderImportPreview() {
     const { dateCol, descriptionCol, amountCol, debitCol, creditCol } = getImportColumnSelection();
+    const selection = { dateCol, descriptionCol, amountCol, debitCol, creditCol };
     pendingImportTransactions = buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol, creditCol);
-    saveImportMapping({ dateCol, descriptionCol, amountCol, debitCol, creditCol });
+    if (isValidImportMapping(selection)) saveImportMapping(selection);
 
     const tbody = document.querySelector('#import-preview-table tbody');
     updateImportPreviewSummary();
+
+    if (!isValidImportMapping(selection)) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Choose the Date, Description, and Amount columns above, then click Refresh Preview.</td></tr>';
+        return;
+    }
 
     if (pendingImportTransactions.length === 0) {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No valid transactions found with the selected columns.</td></tr>';
@@ -2961,6 +3019,11 @@ function updateImportPreviewSummary() {
     const summary = document.getElementById('import-preview-summary');
     if (!summary) return;
 
+    if (!isValidImportMapping(getImportColumnSelection())) {
+        summary.textContent = `${pendingImportFileName}: We could not confidently detect every column. Pick Date, Description, and Amount above, then click Refresh Preview.`;
+        return;
+    }
+
     summary.textContent = `${pendingImportFileName}: ${pendingImportTransactions.length} valid row${pendingImportTransactions.length === 1 ? '' : 's'}, ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} found, ${skippedDuplicateCount} currently skipped, ${selectedCount} selected. Column choices are remembered for this format.`;
 }
 
@@ -2970,13 +3033,15 @@ function openImportPreview(rows, fileName) {
     pendingImportRows = rows;
     pendingImportFileName = fileName;
     pendingImportHeaderRowIndex = findImportHeaderRowIndex(rows);
-    pendingImportHeaders = rows[pendingImportHeaderRowIndex].map((header, index) => String(header || `Column ${index + 1}`).trim());
+    const hasDetectedHeader = isLikelyHeaderRow(rows[pendingImportHeaderRowIndex] || []);
+    pendingImportHeaders = hasDetectedHeader
+        ? rows[pendingImportHeaderRowIndex].map((header, index) => String(header || `Column ${index + 1}`).trim())
+        : buildGenericHeaders(rows);
+    if (!hasDetectedHeader) pendingImportHeaderRowIndex = -1;
 
-    const defaults = getBestImportColumnDefaults(pendingImportHeaders);
-
-    if (!isValidImportMapping(defaults)) {
-        throw new Error('Required columns not found. Please include date, description/merchant, and either amount or debit/credit columns.');
-    }
+    const headerDefaults = getBestImportColumnDefaults(pendingImportHeaders);
+    const guessedDefaults = guessColumnsFromRows(rows, pendingImportHeaderRowIndex + 1);
+    const defaults = isValidImportMapping(headerDefaults) ? headerDefaults : guessedDefaults;
 
     populateImportColumnSelectors(defaults);
     renderImportPreview();
@@ -3609,7 +3674,7 @@ document.getElementById('process').addEventListener('click', function() {
     reader.onload = function(e) {
         try {
             const data = e.target.result;
-            const workbook = file.name.toLowerCase().endsWith('.csv')
+            const workbook = /\.(csv|tsv|txt|cvs)$/i.test(file.name)
                 ? XLSX.read(data, { type: 'string' })
                 : XLSX.read(data, { type: 'binary' });
 
@@ -3628,7 +3693,7 @@ document.getElementById('process').addEventListener('click', function() {
         }
     };
 
-    if (file.name.toLowerCase().endsWith('.csv')) {
+    if (/\.(csv|tsv|txt|cvs)$/i.test(file.name)) {
         reader.readAsText(file);
     } else {
         reader.readAsBinaryString(file);
