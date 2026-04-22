@@ -1137,6 +1137,103 @@ function signOutOfSync() {
     if (firebaseAuth) firebaseAuth.signOut();
 }
 
+function clearLocalAppData() {
+    isApplyingCloudState = true;
+    try {
+        [
+            'budgetProfile',
+            'budgetGoals',
+            'budgetCategories',
+            'recurringTransactions',
+            'skippedRecurringOccurrences',
+            'importedTransactions',
+            'manualTransactions',
+            'darkMode'
+        ].forEach(key => localStorage.removeItem(key));
+
+        allTransactions = [];
+        importedTransactions = [];
+        manualTransactions = [];
+        monthlyData = {};
+        totalIncomeSources = {};
+        totalNeedsSubcategories = {};
+        totalWantsSubcategories = {};
+        numMonths = 0;
+        availableYears = [];
+        currentYear = null;
+        currentMonth = 'all';
+        editingIndex = null;
+        isJoeViewActive = false;
+        hasCalculatedBreakdown = false;
+        currentProfile = getDefaultProfile();
+        currentSnapshotTab = 'overview';
+        budgetCategories = cloneDefaultCategories();
+        budgetGoals = { ...DEFAULT_BUDGET_GOALS };
+        recurringTransactions = [];
+        skippedRecurringOccurrences = [];
+        history = [];
+        historyIndex = -1;
+        lastCloudStateJson = '';
+
+        setDarkMode(false);
+        applyProfileToUI();
+        syncBudgetGoalForm();
+        updateBudgetGoalTargets();
+        renderCategoryManager();
+        renderRecurringManager();
+        resetCalculatedOutput();
+        syncResultsVisibility();
+        displayTransactions();
+        updateUndoRedoButtons();
+        switchPage('home');
+    } finally {
+        isApplyingCloudState = false;
+    }
+}
+
+async function deleteAccountAndData() {
+    if (!firebaseAuth || !firebaseDb || !syncUser) {
+        alert('Please sign in before deleting your account and cloud data.');
+        return;
+    }
+
+    const user = firebaseAuth.currentUser;
+    if (!user) {
+        alert('Please sign in again before deleting your account and cloud data.');
+        return;
+    }
+
+    const firstConfirm = confirm('Delete your account and all synced budget data? This will remove your cloud data, delete your sign-in account, and clear this browser.');
+    if (!firstConfirm) return;
+
+    const secondConfirm = confirm('This cannot be undone. Make a backup first if you want to keep a copy. Continue?');
+    if (!secondConfirm) return;
+
+    const password = prompt('For security, enter your account password to confirm deletion.');
+    if (!password) return;
+
+    try {
+        setSyncStatus('Deleting account and budget data...');
+        const credential = firebase.auth.EmailAuthProvider.credential(user.email, password);
+        await user.reauthenticateWithCredential(credential);
+
+        if (syncUnsubscribe) syncUnsubscribe();
+        syncUnsubscribe = null;
+
+        await firebaseDb.collection('users').doc(user.uid).collection('budgetTracker').doc('appState').delete();
+        await user.delete();
+
+        syncUser = null;
+        clearLocalAppData();
+        updateSyncUi(null);
+        setSyncStatus('Your account and budget data were deleted.');
+        alert('Your account and budget data were deleted.');
+    } catch (error) {
+        setSyncStatus(`Delete failed: ${error.message}`);
+        alert(`Delete failed: ${error.message}`);
+    }
+}
+
 function loadProfile() {
     const savedProfile = localStorage.getItem('budgetProfile');
     if (!savedProfile) {
@@ -3104,6 +3201,7 @@ function attachNavigationListeners() {
     document.getElementById('sync-create-account-btn').addEventListener('click', createSyncAccount);
     document.getElementById('sync-now-btn').addEventListener('click', pushCloudState);
     document.getElementById('sync-sign-out-btn').addEventListener('click', signOutOfSync);
+    document.getElementById('delete-account-data-btn').addEventListener('click', deleteAccountAndData);
     document.getElementById('sync-password').addEventListener('keydown', event => {
         if (event.key === 'Enter') signInForSync();
     });
