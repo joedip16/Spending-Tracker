@@ -2776,7 +2776,7 @@ function isLikelyHeaderRow(row) {
     const headers = row.map(normalizeHeaderLabel);
     const joined = headers.join(' ');
     const hasDate = headers.some(header => header.includes('date'));
-    const hasDescription = ['description', 'desc', 'memo', 'merchant', 'payee', 'name', 'details'].some(alias => joined.includes(alias));
+    const hasDescription = ['description', 'desc', 'memo', 'merchant', 'payee', 'name', 'details', 'category'].some(alias => joined.includes(alias));
     const hasAmount = ['amount', 'debit', 'credit', 'withdrawal', 'deposit', 'charge'].some(alias => joined.includes(alias));
 
     return hasDate && hasDescription && hasAmount;
@@ -2846,12 +2846,13 @@ function getBestImportColumnDefaults(headers) {
     if (savedMapping && isValidImportMapping(savedMapping)) return savedMapping;
 
     const dateCol = findColumnByAliases(headers, ['date', 'transaction date', 'posted date', 'post date', 'posting date']);
-    const descriptionCol = findColumnByAliases(headers, ['description', 'merchant', 'payee', 'name', 'memo', 'details', 'transaction']);
+    const descriptionCol = findColumnByAliases(headers, ['description', 'category', 'merchant', 'payee', 'name', 'memo', 'details', 'transaction']);
     const debitCol = findColumnByAliases(headers, ['debit', 'withdrawal', 'charge', 'paid out', 'outflow']);
     const creditCol = findColumnByAliases(headers, ['credit', 'deposit', 'paid in', 'inflow']);
     const amountCol = findSignedAmountColumn(headers);
+    const accountCol = findColumnByAliases(headers, ['account']);
 
-    return { dateCol, descriptionCol, amountCol, debitCol, creditCol };
+    return { dateCol, descriptionCol, amountCol, debitCol, creditCol, accountCol };
 }
 
 function isValidImportMapping(mapping) {
@@ -2871,6 +2872,7 @@ function isValidImportMapping(mapping) {
 function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -1, creditCol = -1) {
     const previewRows = [];
     const selection = { dateCol, descriptionCol, amountCol, debitCol, creditCol };
+    const accountCol = getBestImportColumnDefaults(pendingImportHeaders).accountCol ?? -1;
     if (!isValidImportMapping(selection)) return previewRows;
 
     for (let i = pendingImportHeaderRowIndex + 1; i < pendingImportRows.length; i++) {
@@ -2884,7 +2886,8 @@ function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -
 
         const cleanedCategory = originalCategory.replace(/\s*\(.*\)/g, '').trim();
         const category = categorizeTransaction(cleanedCategory, originalCategory, amount);
-        const purchaseType = /\(joint\)$/i.test(originalCategory) ? 'joint' : 'single';
+        const accountValue = accountCol >= 0 ? String(pendingImportRows[i][accountCol] || '').toLowerCase() : '';
+        const purchaseType = /\(joint\)$/i.test(originalCategory) || accountValue.includes('joint') ? 'joint' : 'single';
         const transaction = {
             date,
             originalCategory,
