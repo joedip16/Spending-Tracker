@@ -1433,7 +1433,7 @@ table,
 
 .import-column-controls {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
     gap: 12px;
     align-items: end;
     margin: 18px 0;
@@ -1476,6 +1476,10 @@ table,
 .duplicate-pill {
     background: rgba(223, 91, 75, 0.12);
     color: var(--needs);
+}
+
+.duplicate-row {
+    background: rgba(223, 91, 75, 0.06);
 }
 
 .ready-pill {

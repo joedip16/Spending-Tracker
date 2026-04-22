@@ -23,6 +23,7 @@ let pendingImportRows = [];
 let pendingImportHeaders = [];
 let pendingImportFileName = '';
 let pendingImportTransactions = [];
+let pendingImportHeaderRowIndex = 0;
 let firebaseApp = null;
 let firebaseAuth = null;
 let firebaseDb = null;
@@ -2539,16 +2540,139 @@ function isDuplicateImport(txn) {
     return allTransactions.some(existing => transactionKey(existing) === key);
 }
 
-function buildImportPreviewRows(dateCol, descriptionCol, amountCol) {
-    const previewRows = [];
+function parseImportedMoney(value) {
+    if (typeof value === 'number') return value;
 
-    for (let i = 1; i < pendingImportRows.length; i++) {
+    const raw = String(value || '').trim();
+    if (!raw || raw === '-') return 0;
+
+    const isParenthesesNegative = /^\(.*\)$/.test(raw);
+    const normalized = raw
+        .replace(/[,$]/g, '')
+        .replace(/[()]/g, '')
+        .replace(/[^\d.+-]/g, '');
+    const amount = parseFloat(normalized);
+    if (Number.isNaN(amount)) return 0;
+
+    return isParenthesesNegative ? -Math.abs(amount) : amount;
+}
+
+function getImportedAmount(row, selection) {
+    const amountCol = Number.isInteger(selection.amountCol) ? selection.amountCol : -1;
+    const debitCol = Number.isInteger(selection.debitCol) ? selection.debitCol : -1;
+    const creditCol = Number.isInteger(selection.creditCol) ? selection.creditCol : -1;
+
+    if (amountCol >= 0) return parseImportedMoney(row[amountCol]);
+
+    const debit = debitCol >= 0 ? Math.abs(parseImportedMoney(row[debitCol])) : 0;
+    const credit = creditCol >= 0 ? Math.abs(parseImportedMoney(row[creditCol])) : 0;
+
+    if (credit && !debit) return credit;
+    if (debit && !credit) return -debit;
+    if (credit || debit) return credit - debit;
+
+    return 0;
+}
+
+function getImportMappingStorageKey() {
+    const userKey = syncUser?.uid || 'local';
+    return `importColumnMapping:${userKey}:${pendingImportHeaders.map(header => header.toLowerCase()).join('|')}`;
+}
+
+function loadSavedImportMapping() {
+    try {
+        const saved = localStorage.getItem(getImportMappingStorageKey());
+        return saved ? JSON.parse(saved) : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveImportMapping(selection = getImportColumnSelection()) {
+    if (!pendingImportHeaders.length) return;
+    localStorage.setItem(getImportMappingStorageKey(), JSON.stringify(selection));
+}
+
+function normalizeHeaderLabel(header) {
+    return String(header || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function findColumnByAliases(headers, aliases) {
+    const normalizedAliases = aliases.map(normalizeHeaderLabel);
+    return headers.findIndex(header => {
+        const normalizedHeader = normalizeHeaderLabel(header);
+        return normalizedAliases.some(alias => normalizedHeader === alias || normalizedHeader.includes(alias));
+    });
+}
+
+function findSignedAmountColumn(headers) {
+    return headers.findIndex(header => {
+        const normalizedHeader = normalizeHeaderLabel(header);
+        const isDebitOrCredit = ['debit', 'withdrawal', 'charge', 'credit', 'deposit', 'paidin', 'paidout', 'outflow', 'inflow']
+            .some(alias => normalizedHeader.includes(alias));
+        const isBalance = normalizedHeader.includes('balance');
+        const isAmount = ['amount', 'transactionamount', 'signedamount'].some(alias => normalizedHeader === alias || normalizedHeader.includes(alias));
+
+        return isAmount && !isDebitOrCredit && !isBalance;
+    });
+}
+
+function isLikelyHeaderRow(row) {
+    const headers = row.map(normalizeHeaderLabel);
+    const joined = headers.join(' ');
+    const hasDate = headers.some(header => header.includes('date'));
+    const hasDescription = ['description', 'desc', 'memo', 'merchant', 'payee', 'name', 'details'].some(alias => joined.includes(alias));
+    const hasAmount = ['amount', 'debit', 'credit', 'withdrawal', 'deposit', 'charge'].some(alias => joined.includes(alias));
+
+    return hasDate && hasDescription && hasAmount;
+}
+
+function findImportHeaderRowIndex(rows) {
+    const maxRowsToScan = Math.min(rows.length, 10);
+    for (let i = 0; i < maxRowsToScan; i++) {
+        if (isLikelyHeaderRow(rows[i] || [])) return i;
+    }
+    return 0;
+}
+
+function getBestImportColumnDefaults(headers) {
+    const savedMapping = loadSavedImportMapping();
+    if (savedMapping && isValidImportMapping(savedMapping)) return savedMapping;
+
+    const dateCol = findColumnByAliases(headers, ['date', 'transaction date', 'posted date', 'post date', 'posting date']);
+    const descriptionCol = findColumnByAliases(headers, ['description', 'merchant', 'payee', 'name', 'memo', 'details', 'transaction']);
+    const debitCol = findColumnByAliases(headers, ['debit', 'withdrawal', 'charge', 'paid out', 'outflow']);
+    const creditCol = findColumnByAliases(headers, ['credit', 'deposit', 'paid in', 'inflow']);
+    const amountCol = findSignedAmountColumn(headers);
+
+    return { dateCol, descriptionCol, amountCol, debitCol, creditCol };
+}
+
+function isValidImportMapping(mapping) {
+    if (!mapping) return false;
+    const withinHeaders = value => value === -1 || (Number.isInteger(value) && value >= 0 && value < pendingImportHeaders.length);
+
+    return withinHeaders(mapping.dateCol) &&
+        withinHeaders(mapping.descriptionCol) &&
+        withinHeaders(mapping.amountCol) &&
+        withinHeaders(mapping.debitCol ?? -1) &&
+        withinHeaders(mapping.creditCol ?? -1) &&
+        mapping.dateCol >= 0 &&
+        mapping.descriptionCol >= 0 &&
+        (mapping.amountCol >= 0 || mapping.debitCol >= 0 || mapping.creditCol >= 0);
+}
+
+function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -1, creditCol = -1) {
+    const previewRows = [];
+    const selection = { dateCol, descriptionCol, amountCol, debitCol, creditCol };
+
+    for (let i = pendingImportHeaderRowIndex + 1; i < pendingImportRows.length; i++) {
         const rawDate = pendingImportRows[i][dateCol];
         const date = normalizeImportedDate(rawDate);
         if (!date) continue;
 
         const originalCategory = String(pendingImportRows[i][descriptionCol] || '').trim();
-        const amount = parseFloat(pendingImportRows[i][amountCol]) || 0;
+        const amount = getImportedAmount(pendingImportRows[i], selection);
         if (!originalCategory && amount === 0) continue;
 
         const cleanedCategory = originalCategory.replace(/\s*\(.*\)/g, '').trim();
@@ -2566,7 +2690,8 @@ function buildImportPreviewRows(dateCol, descriptionCol, amountCol) {
             ...transaction,
             purchaseType,
             duplicate: isDuplicateImport(transaction),
-            selected: !isDuplicateImport(transaction)
+            selected: !isDuplicateImport(transaction),
+            sourceRow: i + 1
         });
     }
 
@@ -2577,11 +2702,19 @@ function populateImportColumnSelectors(defaults) {
     const selectors = {
         date: document.getElementById('preview-date-column'),
         description: document.getElementById('preview-description-column'),
-        amount: document.getElementById('preview-amount-column')
+        amount: document.getElementById('preview-amount-column'),
+        debit: document.getElementById('preview-debit-column'),
+        credit: document.getElementById('preview-credit-column')
     };
 
-    Object.values(selectors).forEach(select => {
+    Object.entries(selectors).forEach(([key, select]) => {
         select.innerHTML = '';
+        if (key === 'amount' || key === 'debit' || key === 'credit') {
+            const noneOption = document.createElement('option');
+            noneOption.value = -1;
+            noneOption.textContent = key === 'amount' ? 'Use debit/credit columns' : 'Not used';
+            select.appendChild(noneOption);
+        }
         pendingImportHeaders.forEach((header, index) => {
             const option = document.createElement('option');
             option.value = index;
@@ -2593,19 +2726,24 @@ function populateImportColumnSelectors(defaults) {
     selectors.date.value = String(defaults.dateCol);
     selectors.description.value = String(defaults.descriptionCol);
     selectors.amount.value = String(defaults.amountCol);
+    selectors.debit.value = String(defaults.debitCol ?? -1);
+    selectors.credit.value = String(defaults.creditCol ?? -1);
 }
 
 function getImportColumnSelection() {
     return {
         dateCol: parseInt(document.getElementById('preview-date-column').value, 10),
         descriptionCol: parseInt(document.getElementById('preview-description-column').value, 10),
-        amountCol: parseInt(document.getElementById('preview-amount-column').value, 10)
+        amountCol: parseInt(document.getElementById('preview-amount-column').value, 10),
+        debitCol: parseInt(document.getElementById('preview-debit-column').value, 10),
+        creditCol: parseInt(document.getElementById('preview-credit-column').value, 10)
     };
 }
 
 function renderImportPreview() {
-    const { dateCol, descriptionCol, amountCol } = getImportColumnSelection();
-    pendingImportTransactions = buildImportPreviewRows(dateCol, descriptionCol, amountCol);
+    const { dateCol, descriptionCol, amountCol, debitCol, creditCol } = getImportColumnSelection();
+    pendingImportTransactions = buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol, creditCol);
+    saveImportMapping({ dateCol, descriptionCol, amountCol, debitCol, creditCol });
 
     const tbody = document.querySelector('#import-preview-table tbody');
     updateImportPreviewSummary();
@@ -2616,9 +2754,13 @@ function renderImportPreview() {
     }
 
     tbody.innerHTML = pendingImportTransactions.map((txn, index) => `
-        <tr>
+        <tr class="${txn.duplicate ? 'duplicate-row' : ''}">
             <td><input type="checkbox" class="preview-include" data-index="${index}" ${txn.selected ? 'checked' : ''}></td>
-            <td>${txn.duplicate ? '<span class="duplicate-pill">Duplicate?</span>' : '<span class="ready-pill">Ready</span>'}</td>
+            <td>
+                ${txn.duplicate
+                    ? '<span class="duplicate-pill">Duplicate - unchecked by default</span>'
+                    : '<span class="ready-pill">Ready to import</span>'}
+            </td>
             <td>${txn.date}</td>
             <td>${escapeHtml(getBaseDescription(txn.originalCategory))}</td>
             <td>${getAmountDisplay(txn.adjustedAmount).text}</td>
@@ -2660,10 +2802,11 @@ function renderImportPreview() {
 function updateImportPreviewSummary() {
     const duplicateCount = pendingImportTransactions.filter(txn => txn.duplicate).length;
     const selectedCount = pendingImportTransactions.filter(txn => txn.selected).length;
+    const skippedDuplicateCount = pendingImportTransactions.filter(txn => txn.duplicate && !txn.selected).length;
     const summary = document.getElementById('import-preview-summary');
     if (!summary) return;
 
-    summary.textContent = `${pendingImportFileName}: ${pendingImportTransactions.length} valid row${pendingImportTransactions.length === 1 ? '' : 's'}, ${duplicateCount} likely duplicate${duplicateCount === 1 ? '' : 's'}, ${selectedCount} selected to import.`;
+    summary.textContent = `${pendingImportFileName}: ${pendingImportTransactions.length} valid row${pendingImportTransactions.length === 1 ? '' : 's'}, ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} found, ${skippedDuplicateCount} currently skipped, ${selectedCount} selected. Column choices are remembered for this format.`;
 }
 
 function openImportPreview(rows, fileName) {
@@ -2671,18 +2814,16 @@ function openImportPreview(rows, fileName) {
 
     pendingImportRows = rows;
     pendingImportFileName = fileName;
-    pendingImportHeaders = rows[0].map((header, index) => String(header || `Column ${index + 1}`).trim());
+    pendingImportHeaderRowIndex = findImportHeaderRowIndex(rows);
+    pendingImportHeaders = rows[pendingImportHeaderRowIndex].map((header, index) => String(header || `Column ${index + 1}`).trim());
 
-    const headers = pendingImportHeaders.map(header => header.toLowerCase());
-    const dateCol = headers.findIndex(header => header.includes('date'));
-    const descriptionCol = headers.findIndex(header => header.includes('category') || header.includes('description') || header.includes('memo'));
-    const amountCol = headers.findIndex(header => header.includes('amount'));
+    const defaults = getBestImportColumnDefaults(pendingImportHeaders);
 
-    if (dateCol === -1 || descriptionCol === -1 || amountCol === -1) {
-        throw new Error('Required columns not found. Please include date, description/category, and amount columns.');
+    if (!isValidImportMapping(defaults)) {
+        throw new Error('Required columns not found. Please include date, description/merchant, and either amount or debit/credit columns.');
     }
 
-    populateImportColumnSelectors({ dateCol, descriptionCol, amountCol });
+    populateImportColumnSelectors(defaults);
     renderImportPreview();
     document.getElementById('import-preview-section').style.display = 'block';
     document.getElementById('import-preview-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2693,8 +2834,23 @@ function cancelImportPreview() {
     pendingImportHeaders = [];
     pendingImportFileName = '';
     pendingImportTransactions = [];
+    pendingImportHeaderRowIndex = 0;
     document.getElementById('import-preview-section').style.display = 'none';
     document.getElementById('upload').value = '';
+}
+
+function setDuplicateImportSelection(includeDuplicates) {
+    pendingImportTransactions.forEach(txn => {
+        if (txn.duplicate) txn.selected = includeDuplicates;
+    });
+    const tbody = document.querySelector('#import-preview-table tbody');
+    if (!tbody) return;
+
+    tbody.querySelectorAll('.preview-include').forEach(input => {
+        const txn = pendingImportTransactions[parseInt(input.dataset.index, 10)];
+        if (txn?.duplicate) input.checked = includeDuplicates;
+    });
+    updateImportPreviewSummary();
 }
 
 function confirmImportPreview() {
@@ -3323,6 +3479,8 @@ document.getElementById('process').addEventListener('click', function() {
 document.getElementById('refresh-import-preview').addEventListener('click', renderImportPreview);
 document.getElementById('confirm-import-preview').addEventListener('click', confirmImportPreview);
 document.getElementById('cancel-import-preview').addEventListener('click', cancelImportPreview);
+document.getElementById('skip-duplicates-btn').addEventListener('click', () => setDuplicateImportSelection(false));
+document.getElementById('include-duplicates-btn').addEventListener('click', () => setDuplicateImportSelection(true));
 
 // Calculate listeners
 function attachViewModeListeners() {
