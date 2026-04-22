@@ -335,6 +335,16 @@ table,
     border: 1px solid var(--line);
     position: relative;
     overflow: hidden;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    box-shadow: none;
+    width: 100%;
+}
+
+.insight-item:hover {
+    background: var(--surface-strong);
+    transform: translateY(-1px);
 }
 
 .insight-item::before {
@@ -621,6 +631,13 @@ table,
 .insight-item span {
     color: var(--muted);
     font-size: 0.94rem;
+}
+
+.insight-item small {
+    display: block;
+    margin-top: 8px;
+    color: var(--blue-deep);
+    font-weight: 800;
 }
 
 .page-intro {

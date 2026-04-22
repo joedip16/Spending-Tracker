@@ -1569,6 +1569,12 @@ function getPreviousMonthName(monthName) {
     return index > 0 ? months[index - 1] : null;
 }
 
+function getMonthValueByName(monthName) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const index = months.indexOf(monthName);
+    return index === -1 ? 'all' : String(index + 1);
+}
+
 function getLatestActiveMonth(months, monthlyDataSet) {
     return [...months].reverse().find(month => {
         const data = monthlyDataSet[month];
@@ -1576,23 +1582,34 @@ function getLatestActiveMonth(months, monthlyDataSet) {
     }) || months[months.length - 1];
 }
 
-function getTopCategoryChange(currentCategories, previousCategories) {
-    const candidates = Object.keys(currentCategories)
+function getTopCategoryChange(currentGroups, previousGroups) {
+    const candidates = Object.entries(currentGroups).flatMap(([type, currentCategories]) => Object.keys(currentCategories)
         .map(name => {
             const current = currentCategories[name] || 0;
-            const previous = previousCategories[name] || 0;
+            const previous = previousGroups[type]?.[name] || 0;
             if (current <= 0 || previous <= 0) return null;
             return {
+                type,
                 name,
                 current,
                 previous,
                 changePercent: ((current - previous) / previous) * 100
             };
         })
-        .filter(Boolean)
+        .filter(Boolean))
         .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
 
     return candidates[0] || null;
+}
+
+function buildInsightAction({ year, monthName = null, category = 'all', search = '', view = 'transactions' }) {
+    return {
+        year,
+        month: monthName ? getMonthValueByName(monthName) : 'all',
+        category,
+        search,
+        view
+    };
 }
 
 function hasThreeMonthImprovement(months, monthlyDataSet, key, direction = 'up') {
@@ -1622,26 +1639,30 @@ function buildHomeInsights(snapshot, yearSnapshot, selectedMonths, goals, active
     insights.push({
         tone: wantsDelta >= 0 ? 'good' : 'warning',
         title: wantsDelta >= 0 ? `$${formatMoney(wantsDelta)} under Wants budget` : `$${formatMoney(Math.abs(wantsDelta))} over Wants budget`,
-        copy: `Your average Wants spending is ${snapshot.avgWantsPct.toFixed(1)}% against a ${goals.wants}% goal.`
+        copy: `Your average Wants spending is ${snapshot.avgWantsPct.toFixed(1)}% against a ${goals.wants}% goal.`,
+        action: buildInsightAction({ year: homeYear, monthName: currentMonth === 'all' ? null : currentMonthName, category: 'wants' })
     });
 
     insights.push({
         tone: needsDelta >= 0 ? 'good' : 'warning',
         title: needsDelta >= 0 ? `Needs are $${formatMoney(needsDelta)} under goal` : `Needs are trending ${Math.abs(snapshot.avgNeedsPct - goals.needs).toFixed(1)} pts high`,
-        copy: `Needs are ${snapshot.avgNeedsPct.toFixed(1)}% of income for this ${activeViewLabel.toLowerCase()} view.`
+        copy: `Needs are ${snapshot.avgNeedsPct.toFixed(1)}% of income for this ${activeViewLabel.toLowerCase()} view.`,
+        action: buildInsightAction({ year: homeYear, monthName: currentMonth === 'all' ? null : currentMonthName, category: 'needs' })
     });
 
     insights.push({
         tone: savingsGap >= 0 ? 'good' : 'warning',
         title: savingsGap >= 0 ? `Savings beat goal by ${savingsGap.toFixed(1)} pts` : `Savings are ${Math.abs(savingsGap).toFixed(1)} pts below goal`,
-        copy: `Current savings rate is ${snapshot.avgNetPercent.toFixed(1)}% versus your ${goals.savings}% goal.`
+        copy: `Current savings rate is ${snapshot.avgNetPercent.toFixed(1)}% versus your ${goals.savings}% goal.`,
+        action: buildInsightAction({ year: homeYear, monthName: currentMonth === 'all' ? null : currentMonthName, category: 'income' })
     });
 
     if (currentData && currentData.wants > currentData.needs) {
         insights.push({
             tone: 'warning',
             title: 'Wants are higher than Needs',
-            copy: `${currentMonthName} Wants spending is $${formatMoney(currentData.wants - currentData.needs)} above Needs.`
+            copy: `${currentMonthName} Wants spending is $${formatMoney(currentData.wants - currentData.needs)} above Needs.`,
+            action: buildInsightAction({ year: homeYear, monthName: currentMonthName, category: 'wants' })
         });
     }
 
@@ -1651,19 +1672,21 @@ function buildHomeInsights(snapshot, yearSnapshot, selectedMonths, goals, active
             insights.push({
                 tone: wantsChange <= 0 ? 'good' : 'warning',
                 title: `Wants ${wantsChange > 0 ? 'up' : 'down'} ${Math.abs(wantsChange).toFixed(0)}% from last month`,
-                copy: `${currentMonthName} Wants: $${formatMoney(currentData.wants)} vs ${previousMonthName}: $${formatMoney(previousData.wants)}.`
+                copy: `${currentMonthName} Wants: $${formatMoney(currentData.wants)} vs ${previousMonthName}: $${formatMoney(previousData.wants)}.`,
+                action: buildInsightAction({ year: homeYear, monthName: currentMonthName, category: 'wants' })
             });
         }
 
         const categoryChange = getTopCategoryChange(
-            { ...currentData.needsSubcategories, ...currentData.wantsSubcategories },
-            { ...previousData.needsSubcategories, ...previousData.wantsSubcategories }
+            { needs: currentData.needsSubcategories, wants: currentData.wantsSubcategories },
+            { needs: previousData.needsSubcategories, wants: previousData.wantsSubcategories }
         );
         if (categoryChange && Math.abs(categoryChange.changePercent) >= 15) {
             insights.push({
                 tone: categoryChange.changePercent <= 0 ? 'good' : 'warning',
                 title: `${categoryChange.name} ${categoryChange.changePercent > 0 ? 'up' : 'down'} ${Math.abs(categoryChange.changePercent).toFixed(0)}%`,
-                copy: `$${formatMoney(categoryChange.current)} this month vs $${formatMoney(categoryChange.previous)} last month.`
+                copy: `$${formatMoney(categoryChange.current)} this month vs $${formatMoney(categoryChange.previous)} last month.`,
+                action: buildInsightAction({ year: homeYear, monthName: currentMonthName, category: categoryChange.type, search: categoryChange.name })
             });
         }
     }
@@ -1676,14 +1699,16 @@ function buildHomeInsights(snapshot, yearSnapshot, selectedMonths, goals, active
         insights.push({
             tone: 'good',
             title: 'Savings rate improved three months in a row',
-            copy: 'Your savings trend is moving in the right direction.'
+            copy: 'Your savings trend is moving in the right direction.',
+            action: buildInsightAction({ year: homeYear, category: 'income' })
         });
     }
     if (hasThreeMonthImprovement(activeTrendMonths, yearSnapshot.monthlyData, 'needsPercent', 'down')) {
         insights.push({
             tone: 'good',
             title: 'Needs share improved three months in a row',
-            copy: 'Needs are taking up less of income over the last three active months.'
+            copy: 'Needs are taking up less of income over the last three active months.',
+            action: buildInsightAction({ year: homeYear, category: 'needs' })
         });
     }
 
@@ -1691,11 +1716,43 @@ function buildHomeInsights(snapshot, yearSnapshot, selectedMonths, goals, active
         insights.push({
             tone: 'neutral',
             title: `$${formatMoney(snapshot.avgIncome)} average monthly income`,
-            copy: `Calculated across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.`
+            copy: `Calculated across ${snapshot.numMonths} active month${snapshot.numMonths === 1 ? '' : 's'}.`,
+            action: buildInsightAction({ year: homeYear, category: 'income' })
         });
     }
 
     return insights.slice(0, 6);
+}
+
+function applyInsightAction(encodedAction) {
+    if (!encodedAction) return;
+
+    let action = null;
+    try {
+        action = JSON.parse(decodeURIComponent(encodedAction));
+    } catch (error) {
+        return;
+    }
+
+    if (!action) return;
+
+    currentYear = Number(action.year) || currentYear;
+    currentMonth = action.month || 'all';
+    switchPage(action.view || 'transactions');
+    populateYearSelector();
+    populateMonthSelector();
+    populateTransactionPeriodSelectors();
+
+    document.getElementById('transaction-search').value = action.search || '';
+    document.getElementById('transaction-category-filter').value = action.category || 'all';
+    document.getElementById('transaction-type-filter').value = 'all';
+    document.getElementById('transaction-source-filter').value = 'all';
+    document.getElementById('transaction-min-amount').value = '';
+    document.getElementById('transaction-max-amount').value = '';
+
+    displayTransactions();
+    openTransactionsList();
+    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
@@ -1859,11 +1916,15 @@ function renderHomeDashboard() {
 
     const homeInsights = buildHomeInsights(snapshot, yearSnapshot, getSelectedMonths(), goals, activeViewLabel, homeYear);
     document.getElementById('home-insight-list').innerHTML = homeInsights.map(insight => `
-        <div class="insight-item ${insight.tone}">
+        <button class="insight-item ${insight.tone}" type="button" data-insight-action="${encodeURIComponent(JSON.stringify(insight.action || {}))}">
             <strong>${insight.title}</strong>
             <span>${insight.copy}</span>
-        </div>
+            <small>View related transactions</small>
+        </button>
     `).join('');
+    document.querySelectorAll('.insight-item[data-insight-action]').forEach(item => {
+        item.addEventListener('click', () => applyInsightAction(item.dataset.insightAction));
+    });
 
     const donut = document.getElementById('budget-donut');
     const needs = Math.max(snapshot.avgNeedsPct, 0);
