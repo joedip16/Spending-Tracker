@@ -183,6 +183,7 @@ test('import parsing detects Date/Category/Amount/Account CSV files', () => {
   assert.equal(mapping.descriptionCol, 1);
   assert.equal(mapping.amountCol, 2);
   assert.equal(mapping.accountCol, 4);
+  assert.equal(mapping.noteCol, 3);
 
   const previewRows = app.context.buildImportPreviewRows(mapping.dateCol, mapping.descriptionCol, mapping.amountCol);
   assert.equal(previewRows.length, 2);
@@ -308,6 +309,36 @@ test('backup validation rejects invalid backups and normalizes valid payloads', 
   assert.equal(validated.budgetGoals.needs, 50);
   assert.equal(validated.currentSnapshotTab, 'charts');
   assert.deepEqual(validated.skippedRecurringOccurrences, ['123']);
+});
+
+test('backup CSV preserves transaction notes', () => {
+  const app = loadApp();
+  const backup = {
+    appName: '50:40:30 Budget Tracker',
+    version: 1,
+    data: {
+      profile: { name: 'Tester', isSharedBudget: false, householdName: '' },
+      darkMode: false,
+      budgetGoals: { needs: 50, wants: 30, savings: 20 },
+      budgetCategories: {},
+      importedTransactions: [{
+        date: '04/19/2026',
+        originalCategory: 'Eating Out',
+        adjustedAmount: -7,
+        category: 'wants',
+        rawAmount: -7,
+        note: 'Dinner with friends'
+      }],
+      manualTransactions: [],
+      recurringTransactions: [],
+      skippedRecurringOccurrences: [],
+      currentSnapshotTab: 'overview'
+    }
+  };
+
+  const csv = app.context.buildBackupCsv(backup);
+  const parsed = app.context.parseBackupCsv(csv);
+  assert.equal(parsed.data.importedTransactions[0].note, 'Dinner with friends');
 });
 
 test('sync payload validation includes required app state and updatedAt', () => {

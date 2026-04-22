@@ -1454,7 +1454,9 @@ table,
 
 #manual-form input,
 #manual-form select,
+#manual-form textarea,
 #edit-modal input,
+#edit-modal textarea,
 #edit-modal select,
 #year-select {
     width: 100%;
@@ -1462,6 +1464,18 @@ table,
     border-radius: 14px;
     border: 1px solid rgba(98, 127, 164, 0.28);
     background: rgba(255, 255, 255, 0.92);
+    font: inherit;
+    color: inherit;
+}
+
+#manual-form textarea,
+#edit-modal textarea {
+    resize: vertical;
+    min-height: 84px;
+}
+
+.muted-note {
+    color: var(--muted);
 }
 
 #results-section {
@@ -1794,7 +1808,9 @@ body.dark-mode #dark-mode-toggle {
 body.dark-mode #upload,
 body.dark-mode #manual-form input,
 body.dark-mode #manual-form select,
+body.dark-mode #manual-form textarea,
 body.dark-mode #edit-modal input,
+body.dark-mode #edit-modal textarea,
 body.dark-mode #edit-modal select,
 body.dark-mode #year-select,
 body.dark-mode .modal-card input,

@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20260422-transaction-notes">
 </head>
 <body>
     <div id="app-splash" class="app-splash" aria-hidden="true">
@@ -289,6 +289,9 @@
                         <option value="joint">Joint</option>
                     </select>
 
+                    <label for="manual-note">Note:</label>
+                    <textarea id="manual-note" rows="3" placeholder="Optional details, reminder, or context"></textarea>
+
                     <div class="manual-recurring-option">
                         <label for="manual-recurring">
                             <input type="checkbox" id="manual-recurring">
@@ -326,7 +329,7 @@
                         <select id="transaction-month-select"></select>
                     </div>
                     <div class="transaction-search-panel">
-                        <input type="search" id="transaction-search" placeholder="Search descriptions">
+                        <input type="search" id="transaction-search" placeholder="Search descriptions or notes">
                         <select id="transaction-category-filter">
                             <option value="all">All Categories</option>
                             <option value="income">Income / Savings</option>
@@ -357,6 +360,7 @@
                                     <tr>
                                         <th>Date</th>
                                         <th>Description</th>
+                                        <th>Note</th>
                                         <th>Amount</th>
                                         <th>Category</th>
                                         <th>Actions</th>
@@ -701,6 +705,7 @@
             <h3>Edit Transaction</h3>
             <label>Date: <input type="date" id="edit-date" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Description: <input type="text" id="edit-desc" style="width:100%; padding:10px; margin:10px 0;"></label><br>
+            <label>Note: <textarea id="edit-note" rows="3" style="width:100%; padding:10px; margin:10px 0;"></textarea></label><br>
             <label>Amount: <input type="number" id="edit-amount" inputmode="decimal" step="0.01" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Category:
                 <select id="edit-category" style="width:100%; padding:10px; margin:10px 0;">
@@ -722,6 +727,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js?v=20260422-appcheck"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260422-demo-mode"></script>
+    <script src="script.js?v=20260422-transaction-notes"></script>
 </body>
 </html>

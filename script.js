@@ -656,6 +656,7 @@ function createRecurringTransaction(item, occurrenceKey) {
         adjustedAmount: amount,
         category: item.category,
         rawAmount: amount,
+        note: '',
         recurringId: item.id,
         recurringOccurrence: occurrenceKey
     };
@@ -823,6 +824,10 @@ function buildValidatedCloudPayload() {
     };
 }
 
+function normalizeTransactionNote(value) {
+    return String(value || '').trim();
+}
+
 function buildBackupPayload() {
     return {
         appName: '50:40:30 Budget Tracker',
@@ -892,10 +897,10 @@ function buildBackupCsv(payload) {
         ['preferences', data.darkMode ? 'true' : 'false', data.currentSnapshotTab || 'overview'],
         ['budgetGoals', 'needs', 'wants', 'savings'],
         ['budgetGoals', data.budgetGoals.needs, data.budgetGoals.wants, data.budgetGoals.savings],
-        ['importedTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence'],
-        ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '']),
-        ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence'],
-        ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '']),
+        ['importedTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note'],
+        ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '']),
+        ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note'],
+        ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '']),
         ['budgetCategory', 'type', 'name', 'keywords', 'monthlyGoal'],
         ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || ''])),
         ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate'],
@@ -934,6 +939,7 @@ function parseBackupTransaction(row) {
         adjustedAmount: parseFloat(row[3]) || 0,
         category: row[4] || 'uncategorized',
         rawAmount: parseFloat(row[5]) || parseFloat(row[3]) || 0,
+        note: row[8] || '',
         ...(row[6] ? { recurringId: row[6] } : {}),
         ...(row[7] ? { recurringOccurrence: row[7] } : {})
     };
@@ -2085,6 +2091,7 @@ function resetManualForm() {
     document.getElementById('manual-amount').value = '';
     document.getElementById('manual-category').value = 'income';
     document.getElementById('manual-purchase-type').value = 'single';
+    document.getElementById('manual-note').value = '';
     document.getElementById('manual-recurring').checked = false;
     document.getElementById('manual-recurring-frequency').value = 'monthly';
 }
@@ -2165,6 +2172,7 @@ function getTransactionFilters() {
 function transactionMatchesSearchFilters(txn) {
     const filters = getTransactionFilters();
     const description = String(txn.originalCategory || '').toLowerCase();
+    const note = String(txn.note || '').toLowerCase();
     const absoluteAmount = Math.abs(Number(txn.adjustedAmount) || 0);
     const isJoint = /\(joint\)$/i.test(String(txn.originalCategory || ''));
     const purchaseType = isJoint ? 'joint' : 'single';
@@ -2172,7 +2180,7 @@ function transactionMatchesSearchFilters(txn) {
     const isManual = manualTransactions.includes(txn);
     const isRecurring = Boolean(txn.recurringId);
 
-    if (filters.search && !description.includes(filters.search)) return false;
+    if (filters.search && !description.includes(filters.search) && !note.includes(filters.search)) return false;
     if (filters.category !== 'all' && txn.category !== filters.category) return false;
     if (filters.purchaseType !== 'all' && purchaseType !== filters.purchaseType) return false;
     if (filters.source === 'imported' && !isImported) return false;
@@ -3116,8 +3124,9 @@ function getBestImportColumnDefaults(headers) {
     const creditCol = findColumnByAliases(headers, ['credit', 'deposit', 'paid in', 'inflow']);
     const amountCol = findSignedAmountColumn(headers);
     const accountCol = findColumnByAliases(headers, ['account']);
+    const noteCol = findColumnByAliases(headers, ['note', 'notes', 'comment', 'comments']);
 
-    return { dateCol, descriptionCol, amountCol, debitCol, creditCol, accountCol };
+    return { dateCol, descriptionCol, amountCol, debitCol, creditCol, accountCol, noteCol };
 }
 
 function isValidImportMapping(mapping) {
@@ -3137,7 +3146,9 @@ function isValidImportMapping(mapping) {
 function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -1, creditCol = -1) {
     const previewRows = [];
     const selection = { dateCol, descriptionCol, amountCol, debitCol, creditCol };
-    const accountCol = getBestImportColumnDefaults(pendingImportHeaders).accountCol ?? -1;
+    const defaults = getBestImportColumnDefaults(pendingImportHeaders);
+    const accountCol = defaults.accountCol ?? -1;
+    const noteCol = defaults.noteCol ?? -1;
     if (!isValidImportMapping(selection)) return previewRows;
 
     for (let i = pendingImportHeaderRowIndex + 1; i < pendingImportRows.length; i++) {
@@ -3153,12 +3164,16 @@ function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -
         const category = categorizeTransaction(cleanedCategory, originalCategory, amount);
         const accountValue = accountCol >= 0 ? String(pendingImportRows[i][accountCol] || '').toLowerCase() : '';
         const purchaseType = /\(joint\)$/i.test(originalCategory) || accountValue.includes('joint') ? 'joint' : 'single';
+        const note = noteCol >= 0 && noteCol !== descriptionCol
+            ? normalizeTransactionNote(pendingImportRows[i][noteCol])
+            : '';
         const transaction = {
             date,
             originalCategory,
             adjustedAmount: amount,
             category,
-            rawAmount: amount
+            rawAmount: amount,
+            note
         };
 
         previewRows.push({
@@ -3352,7 +3367,8 @@ function confirmImportPreview() {
                 originalCategory: finalDescription,
                 adjustedAmount: txn.adjustedAmount,
                 category: txn.category,
-                rawAmount: txn.rawAmount
+                rawAmount: txn.rawAmount,
+                note: txn.note || ''
             };
         });
 
@@ -3427,8 +3443,8 @@ function displayTransactions() {
     if (filteredTransactions.length === 0) {
         const periodTransactions = allTransactions.filter(transactionMatchesCurrentPeriod);
         tbody.innerHTML = periodTransactions.length === 0
-            ? '<tr class="empty-row"><td colspan="5">No transactions yet. Import a file or add one manually to get started.</td></tr>'
-            : '<tr class="empty-row"><td colspan="5">No transactions match the current search and filters.</td></tr>';
+            ? '<tr class="empty-row"><td colspan="6">No transactions yet. Import a file or add one manually to get started.</td></tr>'
+            : '<tr class="empty-row"><td colspan="6">No transactions match the current search and filters.</td></tr>';
         updateTransactionMeta();
         return;
     }
@@ -3436,10 +3452,12 @@ function displayTransactions() {
     filteredTransactions.forEach(txn => {
         const i = allTransactions.indexOf(txn);
         const amountDisplay = getAmountDisplay(txn.adjustedAmount);
+        const note = normalizeTransactionNote(txn.note);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${txn.date}</td>
             <td>${txn.originalCategory}</td>
+            <td>${note ? escapeHtml(note) : '<span class="muted-note">—</span>'}</td>
             <td class="${amountDisplay.className}">${amountDisplay.text}</td>
             <td>${txn.category.charAt(0).toUpperCase() + txn.category.slice(1)}</td>
             <td>
@@ -3466,6 +3484,7 @@ function openEditModal(index) {
     const txn = allTransactions[index];
     document.getElementById('edit-date').value = formatDateForInput(txn.date);
     document.getElementById('edit-desc').value = txn.originalCategory;
+    document.getElementById('edit-note').value = txn.note || '';
     document.getElementById('edit-amount').value = txn.adjustedAmount;
     document.getElementById('edit-category').value = txn.category;
     document.getElementById('edit-modal').style.display = 'flex';
@@ -3504,6 +3523,7 @@ function deleteTransaction(index) {
 document.getElementById('save-edit').addEventListener('click', () => {
     const date = formatDateForStorage(document.getElementById('edit-date').value);
     const desc = document.getElementById('edit-desc').value.trim();
+    const note = normalizeTransactionNote(document.getElementById('edit-note').value);
     const amount = parseFloat(document.getElementById('edit-amount').value);
     const category = document.getElementById('edit-category').value;
 
@@ -3515,7 +3535,16 @@ document.getElementById('save-edit').addEventListener('click', () => {
     saveState("Edit transaction");
 
     const oldTxn = allTransactions[editingIndex];
-    const updatedTxn = { date, originalCategory: desc, adjustedAmount: amount, category, rawAmount: amount };
+    const updatedTxn = {
+        date,
+        originalCategory: desc,
+        adjustedAmount: amount,
+        category,
+        rawAmount: amount,
+        note,
+        ...(oldTxn.recurringId ? { recurringId: oldTxn.recurringId } : {}),
+        ...(oldTxn.recurringOccurrence ? { recurringOccurrence: oldTxn.recurringOccurrence } : {})
+    };
 
     allTransactions[editingIndex] = updatedTxn;
 
@@ -3860,6 +3889,7 @@ document.getElementById('save-manual').addEventListener('click', () => {
     const amountStr = document.getElementById('manual-amount').value.trim();
     const category = document.getElementById('manual-category').value;
     const purchaseType = document.getElementById('manual-purchase-type').value;
+    const note = normalizeTransactionNote(document.getElementById('manual-note').value);
     const makeRecurring = document.getElementById('manual-recurring').checked;
     const recurringFrequency = document.getElementById('manual-recurring-frequency').value;
 
@@ -3906,7 +3936,8 @@ document.getElementById('save-manual').addEventListener('click', () => {
         originalCategory: finalDescription,
         adjustedAmount: amount,
         category,               // Use the selected category
-        rawAmount: amount
+        rawAmount: amount,
+        note
     };
     if (makeRecurring) {
         newTxn.recurringId = recurringId;
