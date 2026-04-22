@@ -376,6 +376,16 @@ table,
 .summary-card {
     border-radius: 24px;
     padding: 22px;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.summary-card:hover,
+.summary-card:focus-visible {
+    border-color: rgba(47, 111, 237, 0.55);
+    box-shadow: 0 18px 42px rgba(47, 111, 237, 0.18);
+    outline: none;
+    transform: translateY(-2px);
 }
 
 .summary-card h3 {

@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260422-transaction-notes">
+    <link rel="stylesheet" href="styles.css?v=20260422-summary-alerts">
 </head>
 <body>
     <div id="app-splash" class="app-splash" aria-hidden="true">
@@ -55,7 +55,7 @@
 
                 <div id="home-dashboard">
                     <div class="summary-grid">
-                        <article class="summary-card wants-card">
+                        <article class="summary-card wants-card" data-summary-category="wants" tabindex="0" role="button" aria-label="View Wants transactions">
                             <p class="summary-label">Wants</p>
                             <h3 id="home-wants-percent">0.0%</h3>
                             <p id="home-wants-amount" class="summary-amount">$0.00 / $0.00 income</p>
@@ -65,7 +65,7 @@
                             <p id="home-wants-target" class="summary-target">Target: 30% or less</p>
                         </article>
 
-                        <article class="summary-card needs-card">
+                        <article class="summary-card needs-card" data-summary-category="needs" tabindex="0" role="button" aria-label="View Needs transactions">
                             <p class="summary-label">Needs</p>
                             <h3 id="home-needs-percent">0.0%</h3>
                             <p id="home-needs-amount" class="summary-amount">$0.00 / $0.00 income</p>
@@ -75,7 +75,7 @@
                             <p id="home-needs-target" class="summary-target">Target: 50% or less</p>
                         </article>
 
-                        <article class="summary-card savings-card">
+                        <article class="summary-card savings-card" data-summary-category="income" tabindex="0" role="button" aria-label="View Income and Savings transactions">
                             <p class="summary-label">Savings / Income Left</p>
                             <h3 id="home-savings-percent">0.0%</h3>
                             <p id="home-savings-amount" class="summary-amount">$0.00 remaining</p>
@@ -98,9 +98,12 @@
                                 <button id="snapshot-tab-overview" class="snapshot-tab active" data-tab="overview">Overview</button>
                                 <button id="snapshot-tab-charts" class="snapshot-tab" data-tab="charts">Charts</button>
                                 <button id="snapshot-tab-comparisons" class="snapshot-tab" data-tab="comparisons">Comparisons</button>
+                                <button id="snapshot-tab-alerts" class="snapshot-tab" data-tab="alerts">Alerts</button>
                             </div>
                             <div id="snapshot-overview-panel" class="snapshot-panel active">
-                            <div id="home-insight-list" class="insight-list"></div>
+                                <div class="snapshot-overview-copy">
+                                    <p class="panel-copy">Use the tabs above to view charts, comparisons, and alerts for this time frame.</p>
+                                </div>
                             </div>
                             <div id="snapshot-charts-panel" class="snapshot-panel">
                                 <div class="chart-grid">
@@ -136,6 +139,9 @@
                             </div>
                             <div id="snapshot-comparisons-panel" class="snapshot-panel">
                                 <div id="comparison-cards" class="comparison-card-grid"></div>
+                            </div>
+                            <div id="snapshot-alerts-panel" class="snapshot-panel">
+                                <div id="home-insight-list" class="insight-list"></div>
                             </div>
                         </section>
 
@@ -727,6 +733,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js?v=20260422-appcheck"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260422-transaction-notes"></script>
+    <script src="script.js?v=20260422-summary-alerts"></script>
 </body>
 </html>

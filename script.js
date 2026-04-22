@@ -1027,7 +1027,7 @@ function validateBackupPayload(payload) {
         skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
             ? data.skippedRecurringOccurrences.map(value => String(value))
             : [],
-        currentSnapshotTab: ['overview', 'charts', 'comparisons'].includes(data.currentSnapshotTab) ? data.currentSnapshotTab : 'overview',
+        currentSnapshotTab: ['overview', 'charts', 'comparisons', 'alerts'].includes(data.currentSnapshotTab) ? data.currentSnapshotTab : 'overview',
         updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : ''
     };
 }
@@ -2649,6 +2649,18 @@ function applyInsightAction(encodedAction) {
     document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function viewSummaryCategoryTransactions(category) {
+    if (!category || currentYear === null) return;
+
+    const monthName = currentMonth === 'all' ? null : getSelectedMonths()[0];
+    const action = buildInsightAction({
+        year: currentYear,
+        monthName,
+        category
+    });
+    applyInsightAction(encodeURIComponent(JSON.stringify(action)));
+}
+
 function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
     if (year === null) return null;
 
@@ -4049,6 +4061,15 @@ function attachNavigationListeners() {
     });
     document.querySelectorAll('.snapshot-tab').forEach(button => {
         button.addEventListener('click', () => switchSnapshotTab(button.dataset.tab));
+    });
+    document.querySelectorAll('[data-summary-category]').forEach(card => {
+        card.addEventListener('click', () => viewSummaryCategoryTransactions(card.dataset.summaryCategory));
+        card.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                viewSummaryCategoryTransactions(card.dataset.summaryCategory);
+            }
+        });
     });
 
     document.getElementById('go-to-transactions').addEventListener('click', () => switchPage('transactions'));
