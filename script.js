@@ -2402,7 +2402,7 @@ function confirmImportPreview() {
     saveState("Import preview");
     isJoeViewActive = false;
     resetCalculatedOutput();
-    importedTransactions = selectedTransactions;
+    importedTransactions = [...importedTransactions, ...selectedTransactions];
     saveAllTransactions();
     updateTransactions();
     updateBreakdownButtonLabels();
