@@ -1,0 +1,8 @@
+{
+  "name": "50-40-30-budget-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
