@@ -1902,7 +1902,7 @@ function renderHomeDashboard() {
     const activeViewLabel = getCurrentBreakdownLabel(isJoeViewActive);
     const goals = getBudgetGoals();
     updateBudgetGoalTargets();
-    document.getElementById('home-subtitle').textContent = `Live ${activeViewLabel.toLowerCase()} snapshot for ${periodLabel}.`;
+    document.getElementById('home-subtitle').textContent = `Snapshot for ${periodLabel}.`;
     document.getElementById('home-year-title').textContent = `${periodLabel} Snapshot`;
     document.getElementById('home-wants-percent').textContent = `${snapshot.avgWantsPct.toFixed(1)}%`;
     document.getElementById('home-needs-percent').textContent = `${snapshot.avgNeedsPct.toFixed(1)}%`;
