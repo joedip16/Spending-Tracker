@@ -31,6 +31,7 @@ let syncUnsubscribe = null;
 let isApplyingCloudState = false;
 let syncDebounceTimer = null;
 let lastCloudStateJson = '';
+let onboardingStep = 0;
 
 const DEFAULT_BUDGET_GOALS = {
     needs: 50,
@@ -163,16 +164,8 @@ function saveBudgetGoalSettings() {
         wants: Number(document.getElementById('goal-wants').value),
         savings: Number(document.getElementById('goal-savings').value)
     };
-    const total = goals.needs + goals.wants + goals.savings;
 
-    if (Object.values(goals).some(value => Number.isNaN(value) || value < 0 || value > 100)) {
-        alert('Please enter goal percentages between 0 and 100.');
-        return;
-    }
-
-    if (total !== 100 && !confirm(`These goals add up to ${total}%, not 100%. Save them anyway?`)) {
-        return;
-    }
+    if (!validateBudgetGoals(goals, true)) return;
 
     saveBudgetGoals(goals);
     updateBudgetGoalTargets();
@@ -187,6 +180,26 @@ function resetBudgetGoalSettings() {
     updateBudgetGoalTargets();
     renderHomeDashboard();
     refreshCalculatedView();
+}
+
+function validateBudgetGoals(goals, allowConfirm = true) {
+    const total = goals.needs + goals.wants + goals.savings;
+
+    if (Object.values(goals).some(value => Number.isNaN(value) || value < 0 || value > 100)) {
+        alert('Please enter goal percentages between 0 and 100.');
+        return false;
+    }
+
+    if (total !== 100 && allowConfirm && !confirm(`These goals add up to ${total}%, not 100%. Save them anyway?`)) {
+        return false;
+    }
+
+    if (total !== 100 && !allowConfirm) {
+        alert(`Your goals currently add up to ${total}%. Please make them total 100%.`);
+        return false;
+    }
+
+    return true;
 }
 
 function updateBudgetGoalTargets() {
@@ -1148,7 +1161,8 @@ function clearLocalAppData() {
             'skippedRecurringOccurrences',
             'importedTransactions',
             'manualTransactions',
-            'darkMode'
+            'darkMode',
+            'onboardingComplete'
         ].forEach(key => localStorage.removeItem(key));
 
         allTransactions = [];
@@ -1323,6 +1337,175 @@ function openProfileModal(isFirstRun = false) {
 
 function closeProfileModal() {
     document.getElementById('profile-modal').style.display = 'none';
+}
+
+function hasCompletedOnboarding() {
+    return localStorage.getItem('onboardingComplete') === 'true';
+}
+
+function markOnboardingComplete() {
+    localStorage.setItem('onboardingComplete', 'true');
+}
+
+function updateOnboardingGoalTotal() {
+    const total = ['onboarding-goal-needs', 'onboarding-goal-wants', 'onboarding-goal-savings']
+        .map(id => Number(document.getElementById(id)?.value || 0))
+        .reduce((sum, value) => sum + value, 0);
+    const totalText = document.getElementById('onboarding-goal-total-text');
+    if (!totalText) return;
+
+    totalText.textContent = `Current total: ${total.toFixed(0)}%`;
+    totalText.classList.toggle('warning', total !== 100);
+}
+
+function toggleOnboardingSharedFields() {
+    const shared = document.getElementById('onboarding-shared-budget').checked;
+    document.getElementById('onboarding-shared-fields').style.display = shared ? 'block' : 'none';
+}
+
+function syncOnboardingDefaults() {
+    const profile = currentProfile || getDefaultProfile();
+    const goals = getBudgetGoals();
+
+    document.getElementById('onboarding-name').value = profile.name || '';
+    document.getElementById('onboarding-shared-budget').checked = Boolean(profile.isSharedBudget);
+    document.getElementById('onboarding-household-name').value = profile.householdName || '';
+    document.getElementById('onboarding-goal-needs').value = goals.needs;
+    document.getElementById('onboarding-goal-wants').value = goals.wants;
+    document.getElementById('onboarding-goal-savings').value = goals.savings;
+    toggleOnboardingSharedFields();
+    updateOnboardingGoalTotal();
+}
+
+function openOnboarding() {
+    closeProfileModal();
+    onboardingStep = 0;
+    syncOnboardingDefaults();
+    document.getElementById('onboarding-modal').style.display = 'flex';
+    renderOnboardingStep();
+}
+
+function closeOnboarding() {
+    document.getElementById('onboarding-modal').style.display = 'none';
+}
+
+function renderOnboardingStep() {
+    document.querySelectorAll('.onboarding-step').forEach(step => {
+        step.classList.toggle('active', Number(step.dataset.onboardingStep) === onboardingStep);
+    });
+    document.querySelectorAll('.onboarding-dot').forEach(dot => {
+        dot.classList.toggle('active', Number(dot.dataset.stepDot) <= onboardingStep);
+    });
+
+    const backButton = document.getElementById('onboarding-back-btn');
+    const nextButton = document.getElementById('onboarding-next-btn');
+    const finishButton = document.getElementById('onboarding-finish-btn');
+
+    backButton.style.visibility = onboardingStep === 0 ? 'hidden' : 'visible';
+    nextButton.style.display = onboardingStep < 3 ? 'inline-block' : 'none';
+    finishButton.style.display = onboardingStep === 3 ? 'inline-block' : 'none';
+}
+
+function saveOnboardingProfile() {
+    const name = document.getElementById('onboarding-name').value.trim();
+    const isSharedBudget = document.getElementById('onboarding-shared-budget').checked;
+    const householdName = document.getElementById('onboarding-household-name').value.trim();
+
+    if (!name) {
+        alert('Please enter your name to personalize the app.');
+        return false;
+    }
+
+    saveProfile({ name, isSharedBudget, householdName });
+    if (!isSharedBudget) isJoeViewActive = false;
+    updateBreakdownButtonLabels();
+    return true;
+}
+
+function saveOnboardingGoals() {
+    const goals = {
+        needs: Number(document.getElementById('onboarding-goal-needs').value),
+        wants: Number(document.getElementById('onboarding-goal-wants').value),
+        savings: Number(document.getElementById('onboarding-goal-savings').value)
+    };
+
+    if (!validateBudgetGoals(goals, false)) return false;
+
+    saveBudgetGoals(goals);
+    syncBudgetGoalForm();
+    updateBudgetGoalTargets();
+    renderHomeDashboard();
+    refreshCalculatedView();
+    return true;
+}
+
+function validateOnboardingStep(step = onboardingStep) {
+    if (step === 1) return saveOnboardingProfile();
+    if (step === 2) return saveOnboardingGoals();
+    return true;
+}
+
+function goToOnboardingStep(nextStep) {
+    if (nextStep > onboardingStep && !validateOnboardingStep()) return;
+    onboardingStep = Math.min(Math.max(nextStep, 0), 3);
+    renderOnboardingStep();
+}
+
+function finishOnboarding(destination = 'home') {
+    if (!validateOnboardingStep()) return;
+    markOnboardingComplete();
+    closeOnboarding();
+
+    if (destination === 'import') {
+        switchPage('transactions');
+        document.getElementById('upload').focus();
+        return;
+    }
+
+    if (destination === 'manual') {
+        switchPage('transactions');
+        openManualForm();
+        return;
+    }
+
+    switchPage('home');
+}
+
+function setOnboardingSyncStatus(message) {
+    const status = document.getElementById('onboarding-sync-status');
+    if (status) status.textContent = message;
+}
+
+function createOnboardingAccount() {
+    if (!firebaseAuth) {
+        setOnboardingSyncStatus('Firebase sync is not ready yet. You can skip and turn it on later in Settings.');
+        return;
+    }
+
+    const email = document.getElementById('onboarding-email').value.trim();
+    const password = document.getElementById('onboarding-password').value;
+    firebaseAuth.createUserWithEmailAndPassword(email, password)
+        .then(() => {
+            setOnboardingSyncStatus('Account created. Your setup will sync after you finish.');
+            goToOnboardingStep(1);
+        })
+        .catch(error => setOnboardingSyncStatus(`Account creation failed: ${error.message}`));
+}
+
+function signInOnboardingAccount() {
+    if (!firebaseAuth) {
+        setOnboardingSyncStatus('Firebase sync is not ready yet. You can skip and turn it on later in Settings.');
+        return;
+    }
+
+    const email = document.getElementById('onboarding-email').value.trim();
+    const password = document.getElementById('onboarding-password').value;
+    firebaseAuth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+            setOnboardingSyncStatus('Signed in. Your setup will sync after you finish.');
+            goToOnboardingStep(1);
+        })
+        .catch(error => setOnboardingSyncStatus(`Sign in failed: ${error.message}`));
 }
 
 function toggleProfileSharedFields() {
@@ -3216,6 +3399,21 @@ function attachNavigationListeners() {
     });
     document.getElementById('clear-transaction-filters').addEventListener('click', clearTransactionFilters);
     document.getElementById('profile-shared-budget').addEventListener('change', toggleProfileSharedFields);
+    document.getElementById('onboarding-shared-budget').addEventListener('change', toggleOnboardingSharedFields);
+    ['onboarding-goal-needs', 'onboarding-goal-wants', 'onboarding-goal-savings'].forEach(id => {
+        document.getElementById(id).addEventListener('input', updateOnboardingGoalTotal);
+    });
+    document.getElementById('onboarding-create-account-btn').addEventListener('click', createOnboardingAccount);
+    document.getElementById('onboarding-sign-in-btn').addEventListener('click', signInOnboardingAccount);
+    document.getElementById('onboarding-skip-account-btn').addEventListener('click', () => goToOnboardingStep(1));
+    document.getElementById('onboarding-back-btn').addEventListener('click', () => goToOnboardingStep(onboardingStep - 1));
+    document.getElementById('onboarding-next-btn').addEventListener('click', () => goToOnboardingStep(onboardingStep + 1));
+    document.getElementById('onboarding-finish-btn').addEventListener('click', () => finishOnboarding('home'));
+    document.getElementById('onboarding-import-btn').addEventListener('click', () => finishOnboarding('import'));
+    document.getElementById('onboarding-add-transaction-btn').addEventListener('click', () => finishOnboarding('manual'));
+    document.getElementById('onboarding-password').addEventListener('keydown', event => {
+        if (event.key === 'Enter') createOnboardingAccount();
+    });
     document.getElementById('save-profile-btn').addEventListener('click', () => {
         const name = document.getElementById('profile-name').value.trim();
         const isSharedBudget = document.getElementById('profile-shared-budget').checked;
@@ -3437,5 +3635,9 @@ window.addEventListener('load', () => {
     initFirebaseSync();
     renderHomeDashboard();
     switchPage('home');
-    if (!hasCompletedProfile()) openProfileModal(true);
+    if (!hasCompletedOnboarding() && !hasCompletedProfile()) {
+        openOnboarding();
+    } else if (!hasCompletedProfile()) {
+        openProfileModal(true);
+    }
 });

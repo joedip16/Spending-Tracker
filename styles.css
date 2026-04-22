@@ -112,6 +112,99 @@ button[disabled] {
     font-weight: 800;
 }
 
+.onboarding-shell {
+    z-index: 140;
+}
+
+.onboarding-card {
+    max-width: 720px;
+}
+
+.onboarding-progress {
+    display: flex;
+    gap: 8px;
+    margin: 18px 0 24px;
+}
+
+.onboarding-dot {
+    height: 8px;
+    flex: 1;
+    border-radius: 999px;
+    background: rgba(104, 132, 168, 0.22);
+}
+
+.onboarding-dot.active {
+    background: var(--blue);
+}
+
+.onboarding-step {
+    display: none;
+}
+
+.onboarding-step.active {
+    display: grid;
+    gap: 14px;
+}
+
+.onboarding-step h3 {
+    font-size: 1.5rem;
+}
+
+.onboarding-auth-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.onboarding-auth-form input,
+.onboarding-step > input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.onboarding-actions,
+.onboarding-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.onboarding-footer {
+    justify-content: space-between;
+    margin-top: 24px;
+}
+
+.onboarding-goals {
+    margin-top: 0;
+}
+
+.amount-primer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.amount-primer div {
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-alt);
+}
+
+.amount-primer p {
+    color: var(--muted);
+    margin-top: 6px;
+}
+
+.amount-primer span {
+    font-weight: 800;
+    color: var(--text);
+}
+
 .app-header {
     display: flex;
     align-items: flex-start;
@@ -1619,6 +1712,8 @@ body.dark-mode #edit-modal input,
 body.dark-mode #edit-modal select,
 body.dark-mode #year-select,
 body.dark-mode .modal-card input,
+body.dark-mode .onboarding-auth-form input,
+body.dark-mode .onboarding-step > input,
 body.dark-mode .category-add-form input,
 body.dark-mode .category-add-form select,
 body.dark-mode .recurring-add-form input,
@@ -1663,7 +1758,9 @@ body.dark-mode .nav-btn.active {
     .settings-grid,
     .budget-goal-form,
     .chart-grid,
-    .comparison-card-grid {
+    .comparison-card-grid,
+    .onboarding-auth-form,
+    .amount-primer {
         grid-template-columns: 1fr;
     }
 

@@ -531,6 +531,103 @@
         <button id="nav-settings" class="nav-btn" data-page="settings">Settings</button>
     </nav>
 
+    <div id="onboarding-modal" class="modal-shell onboarding-shell" style="display:none;">
+        <div class="modal-card onboarding-card">
+            <p class="panel-kicker">First Run Setup</p>
+            <h2 id="onboarding-title">Welcome to 50:40:30 Budget Tracker</h2>
+            <p id="onboarding-copy" class="panel-copy">Let's set up the basics so your budget starts clean.</p>
+
+            <div class="onboarding-progress" aria-label="Onboarding progress">
+                <span class="onboarding-dot active" data-step-dot="0"></span>
+                <span class="onboarding-dot" data-step-dot="1"></span>
+                <span class="onboarding-dot" data-step-dot="2"></span>
+                <span class="onboarding-dot" data-step-dot="3"></span>
+            </div>
+
+            <section class="onboarding-step active" data-onboarding-step="0">
+                <h3>Create or sign in to an account</h3>
+                <p class="panel-copy">An account lets your transactions sync between your phone and computer. You can skip this for now and turn it on later in Settings.</p>
+                <div class="onboarding-auth-form">
+                    <input type="email" id="onboarding-email" placeholder="Email address" autocomplete="email">
+                    <input type="password" id="onboarding-password" placeholder="Password" autocomplete="new-password">
+                </div>
+                <p id="onboarding-sync-status" class="backup-status">Use the same account on each device to keep data synced.</p>
+                <div class="modal-actions onboarding-actions">
+                    <button id="onboarding-create-account-btn">Create Account</button>
+                    <button id="onboarding-sign-in-btn" class="secondary-button">Sign In</button>
+                    <button id="onboarding-skip-account-btn" class="secondary-button">Skip For Now</button>
+                </div>
+            </section>
+
+            <section class="onboarding-step" data-onboarding-step="1">
+                <h3>Choose your budget setup</h3>
+                <label for="onboarding-name">Your name</label>
+                <input type="text" id="onboarding-name" placeholder="e.g., Alex">
+
+                <label class="setting-row profile-inline" for="onboarding-shared-budget">
+                    <div>
+                        <strong>Shared household budget</strong>
+                        <p>Use this if you want both Single View and Joint View.</p>
+                    </div>
+                    <span class="settings-switch">
+                        <input type="checkbox" id="onboarding-shared-budget">
+                        <span class="settings-slider"></span>
+                    </span>
+                </label>
+
+                <div id="onboarding-shared-fields">
+                    <label for="onboarding-household-name">Household or partner name</label>
+                    <input type="text" id="onboarding-household-name" placeholder="e.g., Alex & Sam">
+                </div>
+            </section>
+
+            <section class="onboarding-step" data-onboarding-step="2">
+                <h3>Set your starting goals</h3>
+                <p class="panel-copy">The classic setup is 50% Needs, 30% Wants, and 20% Savings. You can tune this now or later.</p>
+                <div class="budget-goal-form onboarding-goals">
+                    <label for="onboarding-goal-needs">
+                        Needs %
+                        <input type="number" id="onboarding-goal-needs" min="0" max="100" step="1" value="50">
+                    </label>
+                    <label for="onboarding-goal-wants">
+                        Wants %
+                        <input type="number" id="onboarding-goal-wants" min="0" max="100" step="1" value="30">
+                    </label>
+                    <label for="onboarding-goal-savings">
+                        Savings %
+                        <input type="number" id="onboarding-goal-savings" min="0" max="100" step="1" value="20">
+                    </label>
+                </div>
+                <p id="onboarding-goal-total-text" class="goal-total-text">Current total: 100%</p>
+            </section>
+
+            <section class="onboarding-step" data-onboarding-step="3">
+                <h3>Add your first transactions</h3>
+                <div class="amount-primer">
+                    <div>
+                        <strong>Income is positive</strong>
+                        <p>Paychecks, refunds, and money coming in should be entered like <span>3000.00</span>.</p>
+                    </div>
+                    <div>
+                        <strong>Spending is negative</strong>
+                        <p>Needs and Wants should be entered like <span>-42.50</span>.</p>
+                    </div>
+                </div>
+                <p class="panel-copy">You can import a bank file or start with one manual transaction. The dashboard will wake up once transactions exist.</p>
+                <div class="modal-actions onboarding-actions">
+                    <button id="onboarding-import-btn">Import Transactions</button>
+                    <button id="onboarding-add-transaction-btn" class="secondary-button">Add One Manually</button>
+                </div>
+            </section>
+
+            <div class="modal-actions onboarding-footer">
+                <button id="onboarding-back-btn" class="secondary-button">Back</button>
+                <button id="onboarding-next-btn">Next</button>
+                <button id="onboarding-finish-btn" style="display:none;">Finish Setup</button>
+            </div>
+        </div>
+    </div>
+
     <div id="profile-modal" class="modal-shell" style="display:none;">
         <div class="modal-card">
             <p class="panel-kicker">Welcome</p>
