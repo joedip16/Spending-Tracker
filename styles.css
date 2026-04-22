@@ -709,6 +709,51 @@ table,
     background: var(--surface-alt);
 }
 
+.amount-calculator {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin: 10px 0 18px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-alt);
+}
+
+.calc-key {
+    min-height: 48px;
+    padding: 10px;
+    border-radius: 14px;
+    box-shadow: none;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.calc-key:hover {
+    transform: none;
+}
+
+.calc-secondary {
+    background: rgba(47, 111, 237, 0.12);
+    color: var(--blue-deep);
+}
+
+.calc-secondary:hover {
+    background: rgba(47, 111, 237, 0.18);
+}
+
+.calc-primary {
+    background: var(--savings);
+}
+
+.calc-primary:hover {
+    background: #238855;
+}
+
+.calc-wide {
+    grid-column: span 2;
+}
+
 .budget-goal-form {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1502,6 +1547,11 @@ body.dark-mode .modal-card {
     background: var(--surface-strong);
 }
 
+body.dark-mode .calc-secondary {
+    background: rgba(140, 173, 214, 0.16);
+    color: var(--text);
+}
+
 body.dark-mode .panel-button {
     background: rgba(255, 255, 255, 0.96);
 }
@@ -1577,5 +1627,15 @@ body.dark-mode .nav-btn.active {
     #export {
         width: 100%;
         margin: 0;
+    }
+
+    .amount-calculator {
+        gap: 10px;
+        padding: 14px;
+    }
+
+    .calc-key {
+        min-height: 56px;
+        font-size: 1.15rem;
     }
 }

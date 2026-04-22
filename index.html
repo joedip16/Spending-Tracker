@@ -229,7 +229,28 @@
                     <input type="text" id="manual-desc" placeholder="Type a new transaction name" style="display:none;" />
 
                     <label for="manual-amount">Amount:</label>
-                    <input type="number" id="manual-amount" step="0.01" placeholder="e.g., -8.50 or 3000.00" required>
+                    <input type="text" id="manual-amount" inputmode="decimal" autocomplete="off" placeholder="e.g., -8.50 or 3000.00" required>
+                    <div id="amount-calculator" class="amount-calculator" aria-label="Amount calculator">
+                        <button type="button" class="calc-key calc-secondary" data-calc-action="clear">C</button>
+                        <button type="button" class="calc-key calc-secondary" data-calc-action="backspace">Back</button>
+                        <button type="button" class="calc-key calc-secondary" data-calc-value="/">/</button>
+                        <button type="button" class="calc-key calc-secondary" data-calc-value="*">*</button>
+                        <button type="button" class="calc-key" data-calc-value="7">7</button>
+                        <button type="button" class="calc-key" data-calc-value="8">8</button>
+                        <button type="button" class="calc-key" data-calc-value="9">9</button>
+                        <button type="button" class="calc-key calc-secondary" data-calc-value="-">-</button>
+                        <button type="button" class="calc-key" data-calc-value="4">4</button>
+                        <button type="button" class="calc-key" data-calc-value="5">5</button>
+                        <button type="button" class="calc-key" data-calc-value="6">6</button>
+                        <button type="button" class="calc-key calc-secondary" data-calc-value="+">+</button>
+                        <button type="button" class="calc-key" data-calc-value="1">1</button>
+                        <button type="button" class="calc-key" data-calc-value="2">2</button>
+                        <button type="button" class="calc-key" data-calc-value="3">3</button>
+                        <button type="button" class="calc-key calc-primary" data-calc-action="equals">=</button>
+                        <button type="button" class="calc-key calc-wide" data-calc-value="0">0</button>
+                        <button type="button" class="calc-key" data-calc-value=".">.</button>
+                        <button type="button" class="calc-key calc-secondary" data-calc-action="toggle-sign">+/-</button>
+                    </div>
 
                     <label for="manual-category">Category:</label>
                     <select id="manual-category" required>
@@ -301,8 +322,8 @@
                             <option value="manual">Manual</option>
                             <option value="recurring">Recurring</option>
                         </select>
-                        <input type="number" id="transaction-min-amount" step="0.01" placeholder="Min amount">
-                        <input type="number" id="transaction-max-amount" step="0.01" placeholder="Max amount">
+                        <input type="number" id="transaction-min-amount" inputmode="decimal" step="0.01" placeholder="Min amount">
+                        <input type="number" id="transaction-max-amount" inputmode="decimal" step="0.01" placeholder="Max amount">
                         <button id="clear-transaction-filters" class="secondary-button">Clear Filters</button>
                     </div>
                     <div id="transaction-meta" class="transaction-meta"></div>
@@ -432,7 +453,7 @@
 
                         <div class="recurring-add-form">
                             <input type="text" id="recurring-description" placeholder="Description, e.g., Mortgage">
-                            <input type="number" id="recurring-amount" step="0.01" placeholder="Amount">
+                            <input type="number" id="recurring-amount" inputmode="decimal" step="0.01" placeholder="Amount">
                             <select id="recurring-category">
                                 <option value="needs">Needs</option>
                                 <option value="wants">Wants</option>
@@ -531,7 +552,7 @@
             <h3>Edit Transaction</h3>
             <label>Date: <input type="date" id="edit-date" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Description: <input type="text" id="edit-desc" style="width:100%; padding:10px; margin:10px 0;"></label><br>
-            <label>Amount: <input type="number" id="edit-amount" step="0.01" style="width:100%; padding:10px; margin:10px 0;"></label><br>
+            <label>Amount: <input type="number" id="edit-amount" inputmode="decimal" step="0.01" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Category:
                 <select id="edit-category" style="width:100%; padding:10px; margin:10px 0;">
                     <option value="income">Income</option>

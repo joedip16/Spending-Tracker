@@ -2772,6 +2772,129 @@ document.getElementById('dark-mode-toggle').addEventListener('click', () => {
 
 // ───────────────────────────────────────────────
 // Manual add
+function tokenizeAmountExpression(expression) {
+    const cleaned = String(expression || '').replace(/,/g, '').replace(/\s+/g, '');
+    const tokens = [];
+    let currentNumber = '';
+
+    if (!cleaned || /[^0-9+\-*/.]/.test(cleaned)) return null;
+
+    for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i];
+        const isOperator = '+-*/'.includes(char);
+
+        if (!isOperator) {
+            currentNumber += char;
+            continue;
+        }
+
+        const previousToken = tokens[tokens.length - 1];
+        if (char === '-' && !currentNumber && (!previousToken || '+-*/'.includes(previousToken))) {
+            currentNumber = '-';
+            continue;
+        }
+
+        if (!currentNumber || currentNumber === '-') return null;
+        tokens.push(currentNumber, char);
+        currentNumber = '';
+    }
+
+    if (!currentNumber || currentNumber === '-') return null;
+    tokens.push(currentNumber);
+
+    return tokens.every((token, index) => {
+        if (index % 2 === 1) return '+-*/'.includes(token);
+        return /^-?(\d+\.?\d*|\.\d+)$/.test(token);
+    }) ? tokens : null;
+}
+
+function calculateAmountExpression(expression) {
+    const tokens = tokenizeAmountExpression(expression);
+    if (!tokens) return null;
+
+    const values = [];
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        if (token === '*' || token === '/') {
+            const left = values.pop();
+            const right = Number(tokens[++i]);
+            if (Number.isNaN(right) || (token === '/' && right === 0)) return null;
+            values.push(token === '*' ? left * right : left / right);
+        } else if (token === '+' || token === '-') {
+            values.push(token);
+        } else {
+            const number = Number(token);
+            if (Number.isNaN(number)) return null;
+            values.push(number);
+        }
+    }
+
+    let result = Number(values[0]);
+    for (let i = 1; i < values.length; i += 2) {
+        const operator = values[i];
+        const right = Number(values[i + 1]);
+        result = operator === '+' ? result + right : result - right;
+    }
+
+    return Number.isFinite(result) ? Math.round(result * 100) / 100 : null;
+}
+
+function formatCalculatorResult(value) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function getManualAmountValue() {
+    const expression = document.getElementById('manual-amount').value.trim();
+    const result = calculateAmountExpression(expression);
+    return result === null ? null : result;
+}
+
+function appendCalculatorValue(input, value) {
+    const operators = '+-*/';
+    const current = input.value;
+    const lastChar = current.slice(-1);
+
+    if (operators.includes(value) && operators.includes(lastChar)) {
+        input.value = `${current.slice(0, -1)}${value}`;
+    } else {
+        input.value = `${current}${value}`;
+    }
+
+    input.focus();
+}
+
+function handleAmountCalculatorAction(button) {
+    const input = document.getElementById('manual-amount');
+    if (!input) return;
+
+    const action = button.dataset.calcAction;
+    const value = button.dataset.calcValue;
+
+    if (value) {
+        appendCalculatorValue(input, value);
+        return;
+    }
+
+    if (action === 'clear') {
+        input.value = '';
+    } else if (action === 'backspace') {
+        input.value = input.value.slice(0, -1);
+    } else if (action === 'toggle-sign') {
+        input.value = input.value.trim().startsWith('-')
+            ? input.value.trim().slice(1)
+            : `-${input.value.trim()}`;
+    } else if (action === 'equals') {
+        const result = calculateAmountExpression(input.value);
+        if (result === null) {
+            alert('Please enter a valid amount calculation.');
+            return;
+        }
+        input.value = formatCalculatorResult(result);
+    }
+
+    input.focus();
+}
+
 function openManualForm() {
     document.getElementById('manual-form').style.display = 'block';
     if (!document.getElementById('manual-date').value) {
@@ -2795,6 +2918,18 @@ document.getElementById('cancel-manual').addEventListener('click', () => {
     resetManualForm();
 });
 
+document.querySelectorAll('#amount-calculator .calc-key').forEach(button => {
+    button.addEventListener('click', () => handleAmountCalculatorAction(button));
+});
+
+document.getElementById('manual-amount').addEventListener('keydown', event => {
+    if (event.key === 'Enter' && /[+\-*/]/.test(event.currentTarget.value)) {
+        event.preventDefault();
+        const result = calculateAmountExpression(event.currentTarget.value);
+        if (result !== null) event.currentTarget.value = formatCalculatorResult(result);
+    }
+});
+
 document.getElementById('save-manual').addEventListener('click', () => {
     const date = formatDateForStorage(document.getElementById('manual-date').value);
     const desc = getSelectedManualDescription();
@@ -2808,11 +2943,12 @@ document.getElementById('save-manual').addEventListener('click', () => {
         alert('Please fill all fields.');
         return;
     }
-    const amount = parseFloat(amountStr);
-    if (isNaN(amount)) {
-        alert('Invalid amount');
+    const amount = getManualAmountValue();
+    if (amount === null) {
+        alert('Please enter a valid amount or calculation.');
         return;
     }
+    document.getElementById('manual-amount').value = formatCalculatorResult(amount);
 
     saveState("Add manual transaction");
 
