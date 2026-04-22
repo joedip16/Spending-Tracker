@@ -1028,6 +1028,51 @@ function setSyncStatus(message) {
     if (status) status.textContent = message;
 }
 
+function setButtonLoading(button, isLoading, loadingText = 'Working...') {
+    if (!button) return;
+    if (isLoading) {
+        button.dataset.originalText = button.textContent;
+        button.textContent = loadingText;
+        button.disabled = true;
+    } else {
+        button.textContent = button.dataset.originalText || button.textContent;
+        button.disabled = false;
+        delete button.dataset.originalText;
+    }
+}
+
+function updateConnectionBanner(announceOnline = false) {
+    const banner = document.getElementById('connection-banner');
+    if (!banner) return;
+
+    if (navigator.onLine) {
+        banner.classList.remove('offline');
+        if (announceOnline) {
+            banner.textContent = 'Back online. Sync will resume automatically.';
+            banner.classList.add('show', 'online');
+            setTimeout(() => banner.classList.remove('show', 'online'), 2600);
+        }
+    } else {
+        banner.textContent = 'Offline mode. You can keep viewing cached pages, but cloud sync is paused.';
+        banner.classList.add('show', 'offline');
+        banner.classList.remove('online');
+    }
+}
+
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker.register('/service-worker.js')
+        .catch(error => console.warn('Service worker registration failed:', error));
+}
+
+function hideSplashScreen() {
+    const splash = document.getElementById('app-splash');
+    if (!splash) return;
+    splash.classList.add('hidden');
+    setTimeout(() => splash.remove(), 450);
+}
+
 function updateSyncUi(user = syncUser) {
     const authForm = document.getElementById('sync-auth-form');
     const userPanel = document.getElementById('sync-user-panel');
@@ -1070,12 +1115,15 @@ function pushCloudState() {
     if (payloadJson === lastCloudStateJson) return;
 
     setSyncStatus('Syncing changes...');
+    const syncButton = document.getElementById('sync-now-btn');
+    setButtonLoading(syncButton, true, 'Syncing...');
     docRef.set(payload, { merge: true })
         .then(() => {
             lastCloudStateJson = payloadJson;
             setSyncStatus(`Synced as ${syncUser.email}.`);
         })
-        .catch(error => setSyncStatus(`Sync failed: ${error.message}`));
+        .catch(error => setSyncStatus(`Sync failed: ${error.message}`))
+        .finally(() => setButtonLoading(syncButton, false));
 }
 
 async function createCloudBackup(reason = 'manual') {
@@ -1095,12 +1143,15 @@ async function createCloudBackup(reason = 'manual') {
 
     try {
         setSyncStatus('Creating cloud backup...');
+        setButtonLoading(document.getElementById('create-cloud-backup-btn'), true, 'Backing up...');
         await backupsRef.add(backup);
         setSyncStatus(`Cloud backup created for ${syncUser.email}.`);
         return true;
     } catch (error) {
         setSyncStatus(`Cloud backup failed: ${error.message}`);
         return false;
+    } finally {
+        setButtonLoading(document.getElementById('create-cloud-backup-btn'), false);
     }
 }
 
@@ -1116,6 +1167,7 @@ async function restoreLatestCloudBackup() {
 
     try {
         setSyncStatus('Looking for latest cloud backup...');
+        setButtonLoading(document.getElementById('restore-cloud-backup-btn'), true, 'Restoring...');
         const snapshot = await backupsRef.orderBy('createdAt', 'desc').limit(1).get();
         if (snapshot.empty) {
             setSyncStatus('No cloud backups found.');
@@ -1134,6 +1186,8 @@ async function restoreLatestCloudBackup() {
     } catch (error) {
         setSyncStatus(`Cloud restore failed: ${error.message}`);
         alert(`Cloud restore failed: ${error.message}`);
+    } finally {
+        setButtonLoading(document.getElementById('restore-cloud-backup-btn'), false);
     }
 }
 
@@ -3547,6 +3601,8 @@ document.getElementById('process').addEventListener('click', function() {
         return;
     }
 
+    const processButton = document.getElementById('process');
+    setButtonLoading(processButton, true, 'Preparing...');
     document.getElementById('loading').style.display = 'block';
 
     const reader = new FileReader();
@@ -3562,10 +3618,12 @@ document.getElementById('process').addEventListener('click', function() {
             const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
 
             document.getElementById('loading').style.display = 'none';
+            setButtonLoading(processButton, false);
             openImportPreview(rows, file.name);
 
         } catch (err) {
             document.getElementById('loading').style.display = 'none';
+            setButtonLoading(processButton, false);
             alert('Error: ' + err.message);
         }
     };
@@ -3890,6 +3948,8 @@ document.getElementById('export').addEventListener('click', function() {
 
 // Init
 window.addEventListener('load', () => {
+    registerServiceWorker();
+    updateConnectionBanner();
     loadPersistedData();
     attachNavigationListeners();
     attachViewModeListeners();
@@ -3901,4 +3961,11 @@ window.addEventListener('load', () => {
     } else if (!hasCompletedProfile()) {
         openProfileModal(true);
     }
+    hideSplashScreen();
 });
+
+window.addEventListener('online', () => {
+    updateConnectionBanner(true);
+    queueCloudSync();
+});
+window.addEventListener('offline', updateConnectionBanner);

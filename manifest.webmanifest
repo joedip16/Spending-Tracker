@@ -1,0 +1,34 @@
+{
+  "name": "50:40:30 Budget Tracker",
+  "short_name": "50:40:30",
+  "description": "Track income, needs, wants, savings, goals, and synced budget transactions.",
+  "start_url": "/index.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7efe4",
+  "theme_color": "#2f6fed",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add Transaction",
+      "short_name": "Add",
+      "description": "Open the tracker and add a transaction.",
+      "url": "/index.html#transactions",
+      "icons": [
+        {
+          "src": "/icons/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}

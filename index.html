@@ -4,9 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>50:40:30 Budget Tracker</title>
+    <meta name="theme-color" content="#2f6fed">
+    <meta name="description" content="Track income, needs, wants, savings, goals, and synced budget transactions.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="50:40:30 Budget">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/icon.svg">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <div id="app-splash" class="app-splash" aria-hidden="true">
+        <div class="splash-mark">50:40:30</div>
+        <p>Budget Tracker</p>
+    </div>
+    <div id="connection-banner" class="connection-banner" role="status" aria-live="polite"></div>
+
     <div class="app-shell">
         <header class="app-header">
             <div>
