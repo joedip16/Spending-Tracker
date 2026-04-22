@@ -34,6 +34,7 @@ let isApplyingCloudState = false;
 let syncDebounceTimer = null;
 let lastCloudStateJson = '';
 let onboardingStep = 0;
+let localStateUpdatedAt = '';
 
 const DEFAULT_BUDGET_GOALS = {
     needs: 50,
@@ -713,6 +714,11 @@ function setBackupStatus(message) {
 }
 
 function buildAppStatePayload() {
+    if (!localStateUpdatedAt) {
+        localStateUpdatedAt = localStorage.getItem('appStateUpdatedAt') || new Date().toISOString();
+        localStorage.setItem('appStateUpdatedAt', localStateUpdatedAt);
+    }
+
     return {
         profile: currentProfile || getDefaultProfile(),
         budgetGoals: getBudgetGoals(),
@@ -723,12 +729,12 @@ function buildAppStatePayload() {
         recurringTransactions,
         skippedRecurringOccurrences,
         currentSnapshotTab,
-        updatedAt: new Date().toISOString()
+        updatedAt: localStateUpdatedAt
     };
 }
 
 function buildValidatedCloudPayload() {
-    const payload = buildValidatedCloudPayload();
+    const payload = buildAppStatePayload();
     const validated = validateBackupPayload({ data: payload });
     return {
         ...validated,
@@ -934,7 +940,8 @@ function validateBackupPayload(payload) {
         skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
             ? data.skippedRecurringOccurrences.map(value => String(value))
             : [],
-        currentSnapshotTab: ['overview', 'charts', 'comparisons'].includes(data.currentSnapshotTab) ? data.currentSnapshotTab : 'overview'
+        currentSnapshotTab: ['overview', 'charts', 'comparisons'].includes(data.currentSnapshotTab) ? data.currentSnapshotTab : 'overview',
+        updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : ''
     };
 }
 
@@ -984,9 +991,11 @@ function applyRestoredAppState(restoredData) {
         recurringTransactions = restoredData.recurringTransactions;
         skippedRecurringOccurrences = restoredData.skippedRecurringOccurrences;
         currentSnapshotTab = restoredData.currentSnapshotTab;
+        localStateUpdatedAt = restoredData.updatedAt || new Date().toISOString();
         hasCalculatedBreakdown = false;
 
         localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
+        localStorage.setItem('appStateUpdatedAt', localStateUpdatedAt);
         saveAllTransactions();
         saveBudgetCategories();
         saveBudgetGoals(budgetGoals);
@@ -1094,7 +1103,14 @@ function getCloudBackupCollectionRef() {
     return firebaseDb.collection('users').doc(syncUser.uid).collection('cloudBackups');
 }
 
+function markLocalStateUpdated() {
+    if (isApplyingCloudState) return;
+    localStateUpdatedAt = new Date().toISOString();
+    localStorage.setItem('appStateUpdatedAt', localStateUpdatedAt);
+}
+
 function queueCloudSync() {
+    markLocalStateUpdated();
     if (isApplyingCloudState || !syncUser || !firebaseDb) return;
     clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(pushCloudState, 500);
@@ -1104,6 +1120,20 @@ function getComparableCloudState(payload) {
     const comparable = { ...payload };
     delete comparable.updatedAt;
     return JSON.stringify(comparable);
+}
+
+function getStateUpdatedAtMs(state) {
+    const value = state?.updatedAt;
+    const parsed = value ? Date.parse(value) : 0;
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function hasLocalPersistedBudgetData() {
+    return Boolean(
+        localStorage.getItem('budgetProfile') ||
+        localStorage.getItem('importedTransactions') ||
+        localStorage.getItem('manualTransactions')
+    );
 }
 
 function pushCloudState() {
@@ -1205,6 +1235,12 @@ function subscribeToCloudState(user) {
         const restoredData = validateBackupPayload({ data: cloudData });
         const cloudJson = getComparableCloudState(buildAppStatePayloadFromRestored(restoredData));
         if (cloudJson === lastCloudStateJson) return;
+
+        const localPayload = buildAppStatePayload();
+        if (hasLocalPersistedBudgetData() && getStateUpdatedAtMs(localPayload) > getStateUpdatedAtMs(cloudData)) {
+            queueCloudSync();
+            return;
+        }
 
         lastCloudStateJson = cloudJson;
         applyRestoredAppState(restoredData);
@@ -1317,7 +1353,8 @@ function clearLocalAppData() {
             'importedTransactions',
             'manualTransactions',
             'darkMode',
-            'onboardingComplete'
+            'onboardingComplete',
+            'appStateUpdatedAt'
         ].forEach(key => localStorage.removeItem(key));
 
         allTransactions = [];
@@ -1343,6 +1380,7 @@ function clearLocalAppData() {
         history = [];
         historyIndex = -1;
         lastCloudStateJson = '';
+        localStateUpdatedAt = '';
 
         setDarkMode(false);
         applyProfileToUI();
@@ -1726,10 +1764,12 @@ function updateUndoRedoButtons() {
 
 // Load persisted data
 function loadPersistedData() {
+    isApplyingCloudState = true;
     loadProfile();
     loadBudgetGoals();
     loadBudgetCategories();
     loadRecurringTransactions();
+    localStateUpdatedAt = localStorage.getItem('appStateUpdatedAt') || '';
 
     const savedImported = localStorage.getItem('importedTransactions');
     if (savedImported) importedTransactions = JSON.parse(savedImported);
@@ -1743,6 +1783,7 @@ function loadPersistedData() {
 
     const darkMode = localStorage.getItem('darkMode') === 'true';
     setDarkMode(darkMode);
+    isApplyingCloudState = false;
     applyProfileToUI();
     syncBudgetGoalForm();
     updateBudgetGoalTargets();
