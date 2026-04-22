@@ -2216,6 +2216,44 @@ function transactionKey(txn) {
     ].join('|');
 }
 
+function findDuplicateTransaction(txn) {
+    const key = transactionKey(txn);
+    const importedIndex = importedTransactions.findIndex(existing => transactionKey(existing) === key);
+    if (importedIndex !== -1) {
+        return { collection: 'imported', index: importedIndex, transaction: importedTransactions[importedIndex] };
+    }
+
+    const manualIndex = manualTransactions.findIndex(existing => transactionKey(existing) === key);
+    if (manualIndex !== -1) {
+        return { collection: 'manual', index: manualIndex, transaction: manualTransactions[manualIndex] };
+    }
+
+    return null;
+}
+
+function askDuplicateTransactionChoice(count = 1) {
+    const noun = count === 1 ? 'transaction' : 'transactions';
+    const action = count === 1 ? 'is' : 'are';
+    const message = `${count} identical ${noun} ${action} already saved.\n\nChoose OK to double it and keep both.\nChoose Cancel to overwrite the existing ${noun}.`;
+    return confirm(message) ? 'double' : 'overwrite';
+}
+
+function overwriteDuplicateTransaction(duplicate, txn) {
+    if (!duplicate) return false;
+
+    if (duplicate.collection === 'imported') {
+        importedTransactions[duplicate.index] = txn;
+        return true;
+    }
+
+    if (duplicate.collection === 'manual') {
+        manualTransactions[duplicate.index] = txn;
+        return true;
+    }
+
+    return false;
+}
+
 function isDuplicateImport(txn) {
     const key = transactionKey(txn);
     return allTransactions.some(existing => transactionKey(existing) === key);
@@ -2399,10 +2437,26 @@ function confirmImportPreview() {
         return;
     }
 
+    const duplicateTransactions = selectedTransactions.filter(txn => findDuplicateTransaction(txn));
+    const duplicateChoice = duplicateTransactions.length
+        ? askDuplicateTransactionChoice(duplicateTransactions.length)
+        : 'double';
+
     saveState("Import preview");
     isJoeViewActive = false;
     resetCalculatedOutput();
-    importedTransactions = [...importedTransactions, ...selectedTransactions];
+
+    if (duplicateChoice === 'overwrite') {
+        selectedTransactions.forEach(txn => {
+            const duplicate = findDuplicateTransaction(txn);
+            if (!overwriteDuplicateTransaction(duplicate, txn)) {
+                importedTransactions.push(txn);
+            }
+        });
+    } else {
+        importedTransactions = [...importedTransactions, ...selectedTransactions];
+    }
+
     saveAllTransactions();
     updateTransactions();
     updateBreakdownButtonLabels();
@@ -2799,7 +2853,13 @@ document.getElementById('save-manual').addEventListener('click', () => {
         newTxn.recurringOccurrence = recurringOccurrence;
     }
 
-    manualTransactions.unshift(newTxn);
+    const duplicate = findDuplicateTransaction(newTxn);
+    if (duplicate && askDuplicateTransactionChoice() === 'overwrite') {
+        overwriteDuplicateTransaction(duplicate, newTxn);
+    } else {
+        manualTransactions.unshift(newTxn);
+    }
+
     saveAllTransactions();
     updateTransactions();
     if (makeRecurring) applyRecurringTransactions(false);
