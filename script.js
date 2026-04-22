@@ -23,6 +23,14 @@ let pendingImportRows = [];
 let pendingImportHeaders = [];
 let pendingImportFileName = '';
 let pendingImportTransactions = [];
+let firebaseApp = null;
+let firebaseAuth = null;
+let firebaseDb = null;
+let syncUser = null;
+let syncUnsubscribe = null;
+let isApplyingCloudState = false;
+let syncDebounceTimer = null;
+let lastCloudStateJson = '';
 
 const DEFAULT_BUDGET_GOALS = {
     needs: 50,
@@ -117,6 +125,7 @@ function loadBudgetGoals() {
 function saveBudgetGoals(goals) {
     budgetGoals = normalizeBudgetGoals(goals);
     localStorage.setItem('budgetGoals', JSON.stringify(budgetGoals));
+    queueCloudSync();
 }
 
 function getBudgetGoals() {
@@ -234,6 +243,7 @@ function loadBudgetCategories() {
 function saveBudgetCategories() {
     budgetCategories = normalizeBudgetCategories(budgetCategories);
     localStorage.setItem('budgetCategories', JSON.stringify(budgetCategories));
+    queueCloudSync();
 }
 
 function getCategoryList(type) {
@@ -471,6 +481,7 @@ function loadRecurringTransactions() {
 function saveRecurringTransactions() {
     localStorage.setItem('recurringTransactions', JSON.stringify(recurringTransactions));
     localStorage.setItem('skippedRecurringOccurrences', JSON.stringify(skippedRecurringOccurrences));
+    queueCloudSync();
 }
 
 function parseDateKey(dateKey) {
@@ -686,22 +697,27 @@ function setBackupStatus(message) {
     if (status) status.textContent = message;
 }
 
+function buildAppStatePayload() {
+    return {
+        profile: currentProfile || getDefaultProfile(),
+        budgetGoals: getBudgetGoals(),
+        darkMode: document.body.classList.contains('dark-mode'),
+        importedTransactions,
+        manualTransactions,
+        budgetCategories: normalizeBudgetCategories(budgetCategories),
+        recurringTransactions,
+        skippedRecurringOccurrences,
+        currentSnapshotTab,
+        updatedAt: new Date().toISOString()
+    };
+}
+
 function buildBackupPayload() {
     return {
         appName: '50:40:30 Budget Tracker',
         version: 1,
         exportedAt: new Date().toISOString(),
-        data: {
-            profile: currentProfile || getDefaultProfile(),
-            budgetGoals: getBudgetGoals(),
-            darkMode: document.body.classList.contains('dark-mode'),
-            importedTransactions,
-            manualTransactions,
-            budgetCategories: normalizeBudgetCategories(budgetCategories),
-            recurringTransactions,
-            skippedRecurringOccurrences,
-            currentSnapshotTab
-        }
+        data: buildAppStatePayload()
     };
 }
 
@@ -899,33 +915,10 @@ function validateBackupPayload(payload) {
 }
 
 function restoreBackupData(restoredData) {
-    currentProfile = restoredData.profile;
-    importedTransactions = restoredData.importedTransactions;
-    manualTransactions = restoredData.manualTransactions;
-    budgetCategories = restoredData.budgetCategories;
-    budgetGoals = restoredData.budgetGoals;
-    recurringTransactions = restoredData.recurringTransactions;
-    skippedRecurringOccurrences = restoredData.skippedRecurringOccurrences;
-    currentSnapshotTab = restoredData.currentSnapshotTab;
-    hasCalculatedBreakdown = false;
-
-    localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
-    saveAllTransactions();
-    saveBudgetCategories();
-    saveBudgetGoals(budgetGoals);
-    saveRecurringTransactions();
-    setDarkMode(restoredData.darkMode);
-
-    allTransactions = [...importedTransactions, ...manualTransactions];
-    applyProfileToUI();
-    renderCategoryManager();
-    syncBudgetGoalForm();
-    updateBudgetGoalTargets();
-    renderRecurringManager();
-    updateTransactions();
-    switchSnapshotTab(currentSnapshotTab);
+    applyRestoredAppState(restoredData);
     saveState('Restore backup');
     setBackupStatus(`Backup restored with ${allTransactions.length} transaction${allTransactions.length === 1 ? '' : 's'}.`);
+    queueCloudSync();
 }
 
 function importBackupFile(file) {
@@ -956,6 +949,194 @@ function importBackupFile(file) {
     reader.readAsText(file);
 }
 
+function applyRestoredAppState(restoredData) {
+    isApplyingCloudState = true;
+    try {
+        currentProfile = restoredData.profile;
+        importedTransactions = restoredData.importedTransactions;
+        manualTransactions = restoredData.manualTransactions;
+        budgetCategories = restoredData.budgetCategories;
+        budgetGoals = restoredData.budgetGoals;
+        recurringTransactions = restoredData.recurringTransactions;
+        skippedRecurringOccurrences = restoredData.skippedRecurringOccurrences;
+        currentSnapshotTab = restoredData.currentSnapshotTab;
+        hasCalculatedBreakdown = false;
+
+        localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
+        saveAllTransactions();
+        saveBudgetCategories();
+        saveBudgetGoals(budgetGoals);
+        saveRecurringTransactions();
+        setDarkMode(restoredData.darkMode);
+
+        allTransactions = [...importedTransactions, ...manualTransactions];
+        applyProfileToUI();
+        renderCategoryManager();
+        syncBudgetGoalForm();
+        updateBudgetGoalTargets();
+        renderRecurringManager();
+        updateTransactions();
+        switchSnapshotTab(currentSnapshotTab);
+    } finally {
+        isApplyingCloudState = false;
+    }
+}
+
+function isFirebaseConfigured() {
+    return Boolean(
+        window.firebaseSyncEnabled &&
+        window.firebaseConfig &&
+        window.firebaseConfig.apiKey &&
+        !String(window.firebaseConfig.apiKey).includes('PASTE_')
+    );
+}
+
+function setSyncStatus(message) {
+    const status = document.getElementById('sync-status-text');
+    if (status) status.textContent = message;
+}
+
+function updateSyncUi(user = syncUser) {
+    const authForm = document.getElementById('sync-auth-form');
+    const userPanel = document.getElementById('sync-user-panel');
+    const userEmail = document.getElementById('sync-user-email');
+    if (!authForm || !userPanel || !userEmail) return;
+
+    authForm.style.display = user ? 'none' : 'grid';
+    userPanel.style.display = user ? 'block' : 'none';
+    userEmail.textContent = user?.email || '';
+}
+
+function getSyncDocRef() {
+    if (!firebaseDb || !syncUser) return null;
+    return firebaseDb.collection('users').doc(syncUser.uid).collection('budgetTracker').doc('appState');
+}
+
+function queueCloudSync() {
+    if (isApplyingCloudState || !syncUser || !firebaseDb) return;
+    clearTimeout(syncDebounceTimer);
+    syncDebounceTimer = setTimeout(pushCloudState, 500);
+}
+
+function getComparableCloudState(payload) {
+    const comparable = { ...payload };
+    delete comparable.updatedAt;
+    return JSON.stringify(comparable);
+}
+
+function pushCloudState() {
+    const docRef = getSyncDocRef();
+    if (!docRef) return;
+
+    const payload = buildAppStatePayload();
+    const payloadJson = getComparableCloudState(payload);
+    if (payloadJson === lastCloudStateJson) return;
+
+    setSyncStatus('Syncing changes...');
+    docRef.set(payload, { merge: true })
+        .then(() => {
+            lastCloudStateJson = payloadJson;
+            setSyncStatus(`Synced as ${syncUser.email}.`);
+        })
+        .catch(error => setSyncStatus(`Sync failed: ${error.message}`));
+}
+
+function subscribeToCloudState(user) {
+    if (syncUnsubscribe) syncUnsubscribe();
+    const docRef = firebaseDb.collection('users').doc(user.uid).collection('budgetTracker').doc('appState');
+
+    syncUnsubscribe = docRef.onSnapshot(snapshot => {
+        if (!snapshot.exists) {
+            pushCloudState();
+            return;
+        }
+
+        const cloudData = snapshot.data();
+        const restoredData = validateBackupPayload({ data: cloudData });
+        const cloudJson = getComparableCloudState(buildAppStatePayloadFromRestored(restoredData));
+        if (cloudJson === lastCloudStateJson) return;
+
+        lastCloudStateJson = cloudJson;
+        applyRestoredAppState(restoredData);
+        setSyncStatus(`Synced as ${user.email}.`);
+    }, error => setSyncStatus(`Sync listener failed: ${error.message}`));
+}
+
+function buildAppStatePayloadFromRestored(restoredData) {
+    return {
+        profile: restoredData.profile,
+        budgetGoals: restoredData.budgetGoals,
+        darkMode: restoredData.darkMode,
+        importedTransactions: restoredData.importedTransactions,
+        manualTransactions: restoredData.manualTransactions,
+        budgetCategories: restoredData.budgetCategories,
+        recurringTransactions: restoredData.recurringTransactions,
+        skippedRecurringOccurrences: restoredData.skippedRecurringOccurrences,
+        currentSnapshotTab: restoredData.currentSnapshotTab
+    };
+}
+
+function initFirebaseSync() {
+    updateSyncUi(null);
+    if (!isFirebaseConfigured()) {
+        setSyncStatus('Firebase sync is not configured yet. Add your Firebase config in firebase-config.js and set firebaseSyncEnabled to true.');
+        return;
+    }
+
+    if (!window.firebase) {
+        setSyncStatus('Firebase scripts did not load. Check your internet connection.');
+        return;
+    }
+
+    try {
+        firebaseApp = firebase.apps.length ? firebase.app() : firebase.initializeApp(window.firebaseConfig);
+        firebaseAuth = firebase.auth();
+        firebaseDb = firebase.firestore();
+        firebaseAuth.onAuthStateChanged(user => {
+            syncUser = user;
+            lastCloudStateJson = '';
+            updateSyncUi(user);
+            if (user) {
+                setSyncStatus(`Signed in as ${user.email}. Syncing...`);
+                subscribeToCloudState(user);
+            } else {
+                if (syncUnsubscribe) syncUnsubscribe();
+                syncUnsubscribe = null;
+                setSyncStatus('Sign in to sync this budget across devices.');
+            }
+        });
+    } catch (error) {
+        setSyncStatus(`Firebase setup failed: ${error.message}`);
+    }
+}
+
+function signInForSync() {
+    if (!firebaseAuth) {
+        setSyncStatus('Firebase sync is not configured yet.');
+        return;
+    }
+    const email = document.getElementById('sync-email').value.trim();
+    const password = document.getElementById('sync-password').value;
+    firebaseAuth.signInWithEmailAndPassword(email, password)
+        .catch(error => setSyncStatus(`Sign in failed: ${error.message}`));
+}
+
+function createSyncAccount() {
+    if (!firebaseAuth) {
+        setSyncStatus('Firebase sync is not configured yet.');
+        return;
+    }
+    const email = document.getElementById('sync-email').value.trim();
+    const password = document.getElementById('sync-password').value;
+    firebaseAuth.createUserWithEmailAndPassword(email, password)
+        .then(() => queueCloudSync())
+        .catch(error => setSyncStatus(`Account creation failed: ${error.message}`));
+}
+
+function signOutOfSync() {
+    if (firebaseAuth) firebaseAuth.signOut();
+}
+
 function loadProfile() {
     const savedProfile = localStorage.getItem('budgetProfile');
     if (!savedProfile) {
@@ -974,6 +1155,7 @@ function saveProfile(profile) {
     currentProfile = { ...getDefaultProfile(), ...profile };
     localStorage.setItem('budgetProfile', JSON.stringify(currentProfile));
     applyProfileToUI();
+    queueCloudSync();
 }
 
 function hasCompletedProfile() {
@@ -1059,6 +1241,7 @@ function switchSnapshotTab(tab) {
     document.querySelectorAll('.snapshot-panel').forEach(panel => {
         panel.classList.toggle('active', panel.id === `snapshot-${tab}-panel`);
     });
+    queueCloudSync();
 }
 
 function saveState(description = "Change") {
@@ -1144,12 +1327,14 @@ function setDarkMode(isDark) {
     if (settingsToggle) settingsToggle.checked = isDark;
 
     localStorage.setItem('darkMode', isDark);
+    queueCloudSync();
 }
 
 // Save both sets
 function saveAllTransactions() {
     localStorage.setItem('importedTransactions', JSON.stringify(importedTransactions));
     localStorage.setItem('manualTransactions', JSON.stringify(manualTransactions));
+    queueCloudSync();
 }
 
 function deriveAvailableYears() {
@@ -2719,6 +2904,13 @@ function attachNavigationListeners() {
     document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
     document.getElementById('export-backup-btn').addEventListener('click', exportBackup);
     document.getElementById('import-backup-file').addEventListener('change', event => importBackupFile(event.target.files[0]));
+    document.getElementById('sync-sign-in-btn').addEventListener('click', signInForSync);
+    document.getElementById('sync-create-account-btn').addEventListener('click', createSyncAccount);
+    document.getElementById('sync-now-btn').addEventListener('click', pushCloudState);
+    document.getElementById('sync-sign-out-btn').addEventListener('click', signOutOfSync);
+    document.getElementById('sync-password').addEventListener('keydown', event => {
+        if (event.key === 'Enter') signInForSync();
+    });
     ['goal-needs', 'goal-wants', 'goal-savings'].forEach(id => {
         document.getElementById(id).addEventListener('input', updateBudgetGoalTotal);
     });
@@ -2901,15 +3093,15 @@ function calculateBreakdown(isJoeView = false) {
     document.getElementById('totals-text').innerHTML = `
         <div class="progress-container">
             <div class="progress-label"><span>Needs (target ≤${goals.needs}%)</span><span>${avgNeedsPct.toFixed(1)}%</span></div>
-            <div class="progress-bar"><div class="progress-fill needs" style="width: ${Math.min(avgNeedsPct, 100)}%"></div><span class="progress-bar-value">${avgNeedsPct.toFixed(1)}%</span></div>
+            <div class="progress-bar"><div class="progress-fill needs" style="width: ${Math.min(avgNeedsPct, 100)}%"></div><span class="progress-bar-value">$${formatMoney(avgNeeds)} / $${formatMoney(avgIncome)} income</span></div>
         </div>
         <div class="progress-container">
             <div class="progress-label"><span>Wants (target ≤${goals.wants}%)</span><span>${avgWantsPct.toFixed(1)}%</span></div>
-            <div class="progress-bar"><div class="progress-fill wants" style="width: ${Math.min(avgWantsPct, 100)}%"></div><span class="progress-bar-value">${avgWantsPct.toFixed(1)}%</span></div>
+            <div class="progress-bar"><div class="progress-fill wants" style="width: ${Math.min(avgWantsPct, 100)}%"></div><span class="progress-bar-value">$${formatMoney(avgWants)} / $${formatMoney(avgIncome)} income</span></div>
         </div>
         <div class="progress-container">
-            <div class="progress-label"><span>Savings / Debt Paydown (target ≥${goals.savings}%)</span><span>${avgNetPercent.toFixed(1)}%</span></div>
-            <div class="progress-bar"><div class="progress-fill savings" style="width: ${Math.min(Math.max(avgNetPercent, 0), 100)}%"></div><span class="progress-bar-value">${avgNetPercent.toFixed(1)}%</span></div>
+            <div class="progress-label"><span>Savings / Income (target ≥${goals.savings}%)</span><span>${avgNetPercent.toFixed(1)}%</span></div>
+            <div class="progress-bar"><div class="progress-fill savings" style="width: ${Math.min(Math.max(avgNetPercent, 0), 100)}%"></div><span class="progress-bar-value">$${formatMoney(avgNet)} / $${formatMoney(avgIncome)} income</span></div>
         </div>
     `;
 
@@ -2948,6 +3140,7 @@ window.addEventListener('load', () => {
     loadPersistedData();
     attachNavigationListeners();
     attachViewModeListeners();
+    initFirebaseSync();
     renderHomeDashboard();
     switchPage('home');
     if (!hasCompletedProfile()) openProfileModal(true);

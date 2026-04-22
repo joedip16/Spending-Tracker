@@ -333,6 +333,27 @@
                 </div>
 
                 <div class="settings-grid">
+                    <section class="panel settings-card sync-card">
+                        <p class="panel-kicker">Cloud Sync</p>
+                        <h3>Account Sync</h3>
+                        <p id="sync-status-text" class="panel-copy">Firebase sync is not configured yet.</p>
+
+                        <div id="sync-auth-form" class="sync-auth-form">
+                            <input type="email" id="sync-email" placeholder="Email address" autocomplete="email">
+                            <input type="password" id="sync-password" placeholder="Password" autocomplete="current-password">
+                            <button id="sync-sign-in-btn">Sign In</button>
+                            <button id="sync-create-account-btn" class="secondary-button">Create Account</button>
+                        </div>
+
+                        <div id="sync-user-panel" class="sync-user-panel" style="display:none;">
+                            <strong id="sync-user-email"></strong>
+                            <div class="settings-actions">
+                                <button id="sync-now-btn">Sync Now</button>
+                                <button id="sync-sign-out-btn" class="secondary-button">Sign Out</button>
+                            </div>
+                        </div>
+                    </section>
+
                     <section class="panel settings-card">
                         <p class="panel-kicker">Profile</p>
                         <h3 id="profile-summary-title">Your setup</h3>
@@ -525,6 +546,10 @@
         </div>
     </div>
 
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="script.js"></script>
 </body>

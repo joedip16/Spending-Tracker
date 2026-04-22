@@ -681,6 +681,34 @@ table,
     font-size: 1.6rem;
 }
 
+.sync-card {
+    grid-column: 1 / -1;
+}
+
+.sync-auth-form {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.sync-auth-form input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.sync-user-panel {
+    margin-top: 18px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-alt);
+}
+
 .budget-goal-form {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1242,7 +1270,8 @@ table,
 
 table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     border-radius: 22px;
     overflow: hidden;
 }
@@ -1252,6 +1281,9 @@ th {
     color: white;
     padding: 14px;
     text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 4;
 }
 
 td {
@@ -1322,6 +1354,10 @@ tr:hover {
     background: #2b3a4b !important;
     color: white;
     font-weight: 700;
+    position: sticky;
+    top: 52px;
+    z-index: 3;
+    box-shadow: 0 1px 0 rgba(104, 132, 168, 0.28), 0 8px 18px rgba(0, 0, 0, 0.12);
 }
 
 .breakdown-controls {
@@ -1456,6 +1492,7 @@ body.dark-mode .transaction-search-panel select,
 body.dark-mode .budget-goal-form input,
 body.dark-mode .import-column-controls select,
 body.dark-mode .import-preview-select,
+body.dark-mode .sync-auth-form input,
 body.dark-mode .category-row input {
     background: rgba(9, 19, 31, 0.76);
     color: var(--text);
@@ -1485,6 +1522,7 @@ body.dark-mode .nav-btn.active {
 
     .category-add-form,
     .recurring-add-form,
+    .sync-auth-form,
     .category-row,
     .recurring-row,
     .transaction-search-panel,
@@ -1495,6 +1533,12 @@ body.dark-mode .nav-btn.active {
 
     .cashflow-total {
         text-align: left;
+    }
+
+    .progress-bar-value {
+        font-size: 0.72rem;
+        padding: 0 8px;
+        text-align: center;
     }
 }
 
