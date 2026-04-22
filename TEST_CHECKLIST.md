@@ -1,4 +1,4 @@
-# 50:40:30 Budget Tracker Test Checklist
+# 50:30:20 Budget Tracker Test Checklist
 
 Use this checklist before public releases, store submissions, or major Firebase rule changes.
 
@@ -266,4 +266,3 @@ Notes:
 - Risk:
 - Owner:
 - Target date:
-

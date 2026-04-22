@@ -1,6 +1,6 @@
 {
-  "name": "50:40:30 Budget Tracker",
-  "short_name": "50:40:30",
+  "name": "50:30:20 Budget Tracker",
+  "short_name": "50:30:20",
   "description": "Track income, needs, wants, savings, goals, and synced budget transactions.",
   "start_url": "/index.html",
   "scope": "/",

@@ -314,7 +314,7 @@ test('backup validation rejects invalid backups and normalizes valid payloads', 
 test('backup CSV preserves transaction notes', () => {
   const app = loadApp();
   const backup = {
-    appName: '50:40:30 Budget Tracker',
+    appName: '50:30:20 Budget Tracker',
     version: 1,
     data: {
       profile: { name: 'Tester', isSharedBudget: false, householdName: '' },
