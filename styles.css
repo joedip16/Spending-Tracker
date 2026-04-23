@@ -1312,6 +1312,35 @@ table,
     color: var(--text);
 }
 
+.purchase-toggle {
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    margin: 14px 0;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface-alt);
+    cursor: pointer;
+}
+
+.purchase-toggle input {
+    width: 22px !important;
+    height: 22px;
+    accent-color: var(--blue);
+    flex: 0 0 auto;
+}
+
+.purchase-toggle strong,
+.purchase-toggle small {
+    display: block;
+}
+
+.purchase-toggle small {
+    color: var(--muted);
+    margin-top: 2px;
+}
+
 .setting-row {
     margin-top: 22px;
     padding: 18px;

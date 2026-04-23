@@ -252,6 +252,15 @@ test('budget calculations summarize income, needs, wants, and personal joint spl
   assert.equal(personalSnapshot.totals.wants, 100);
 });
 
+test('manual transaction category inference recognizes likely wants', () => {
+  const app = loadApp();
+  app.run('budgetCategories = cloneDefaultCategories(); allTransactions = [];');
+
+  assert.equal(app.context.inferCategoryForDescription('Eating Out'), 'wants');
+  assert.equal(app.context.inferCategoryForDescription('Mortgage'), 'needs');
+  assert.equal(app.context.inferCategoryForDescription('Demo Paycheck'), 'income');
+});
+
 test('recurring transactions generate due manual transactions once', () => {
   const app = loadApp();
   const recurring = [{

@@ -2090,7 +2090,7 @@ function resetManualForm() {
     document.getElementById('manual-desc').style.display = 'none';
     document.getElementById('manual-amount').value = '';
     document.getElementById('manual-category').value = 'income';
-    document.getElementById('manual-purchase-type').value = 'single';
+    document.getElementById('manual-purchase-type').checked = false;
     document.getElementById('manual-note').value = '';
     document.getElementById('manual-recurring').checked = false;
     document.getElementById('manual-recurring-frequency').value = 'monthly';
@@ -2343,6 +2343,66 @@ function getSelectedManualDescription() {
     }
 
     return select.value.trim();
+}
+
+function inferCategoryForDescription(description) {
+    const baseDescription = getBaseDescription(description).toLowerCase();
+    if (!baseDescription) return 'income';
+
+    const previousMatches = allTransactions.filter(txn => getBaseDescription(txn.originalCategory).toLowerCase() === baseDescription);
+    if (previousMatches.length > 0) {
+        const categoryCounts = previousMatches.reduce((counts, txn) => {
+            counts[txn.category] = (counts[txn.category] || 0) + 1;
+            return counts;
+        }, {});
+        return Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0][0];
+    }
+
+    const guessedExpenseCategory = categorizeTransaction(baseDescription, description, -1);
+    if (guessedExpenseCategory !== 'uncategorized') return guessedExpenseCategory;
+
+    if (['paycheck', 'payroll', 'salary', 'deposit', 'refund', 'bonus'].some(keyword => baseDescription.includes(keyword))) {
+        return 'income';
+    }
+
+    return categorizeTransaction(baseDescription, description, 1);
+}
+
+function normalizeManualAmountSign(category) {
+    const amountInput = document.getElementById('manual-amount');
+    if (!amountInput) return;
+
+    const value = amountInput.value.trim();
+    const isExpense = category === 'needs' || category === 'wants';
+
+    if (!value) {
+        amountInput.value = isExpense ? '-' : '';
+        return;
+    }
+
+    if (value === '-') return;
+    if (/[+\-*/]/.test(value.slice(1))) return;
+
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) return;
+
+    if (isExpense && numericValue > 0) {
+        amountInput.value = formatCalculatorResult(-numericValue);
+    } else if (category === 'income' && numericValue < 0) {
+        amountInput.value = formatCalculatorResult(Math.abs(numericValue));
+    }
+}
+
+function applyManualCategorySuggestion() {
+    const description = getSelectedManualDescription();
+    if (!description) return;
+
+    const category = inferCategoryForDescription(description);
+    const categoryInput = document.getElementById('manual-category');
+    if (!categoryInput || !['income', 'needs', 'wants', 'uncategorized'].includes(category)) return;
+
+    categoryInput.value = category;
+    normalizeManualAmountSign(category);
 }
 
 function renderMonthlyCashflowBars(yearSnapshot, months) {
@@ -3499,6 +3559,7 @@ function openEditModal(index) {
     document.getElementById('edit-note').value = txn.note || '';
     document.getElementById('edit-amount').value = txn.adjustedAmount;
     document.getElementById('edit-category').value = txn.category;
+    document.getElementById('edit-purchase-type').checked = /\(joint\)$/i.test(String(txn.originalCategory || ''));
     document.getElementById('edit-modal').style.display = 'flex';
 }
 
@@ -3538,8 +3599,9 @@ document.getElementById('save-edit').addEventListener('click', () => {
     const note = normalizeTransactionNote(document.getElementById('edit-note').value);
     const amount = parseFloat(document.getElementById('edit-amount').value);
     const category = document.getElementById('edit-category').value;
+    const purchaseType = document.getElementById('edit-purchase-type').checked ? 'joint' : 'single';
 
-    if (!date || !desc || isNaN(amount)) {
+    if (!date || !desc || isNaN(amount) || !purchaseType) {
         alert('Please fill all fields correctly.');
         return;
     }
@@ -3547,9 +3609,11 @@ document.getElementById('save-edit').addEventListener('click', () => {
     saveState("Edit transaction");
 
     const oldTxn = allTransactions[editingIndex];
+    const baseDescription = desc.replace(/\s+\(joint\)$/i, '').trim();
+    const finalDescription = purchaseType === 'joint' ? `${baseDescription} (joint)` : baseDescription;
     const updatedTxn = {
         date,
-        originalCategory: desc,
+        originalCategory: finalDescription,
         adjustedAmount: amount,
         category,
         rawAmount: amount,
@@ -3874,9 +3938,15 @@ document.getElementById('add-transaction-btn').addEventListener('click', openMan
 
 document.getElementById('manual-desc-select').addEventListener('change', () => {
     updateManualDescriptionInput();
+    applyManualCategorySuggestion();
     if (document.getElementById('manual-desc-select').value === '__new__') {
         document.getElementById('manual-desc').focus();
     }
+});
+
+document.getElementById('manual-desc').addEventListener('input', applyManualCategorySuggestion);
+document.getElementById('manual-category').addEventListener('change', event => {
+    normalizeManualAmountSign(event.target.value);
 });
 
 document.getElementById('cancel-manual').addEventListener('click', () => {
@@ -3900,7 +3970,7 @@ document.getElementById('save-manual').addEventListener('click', () => {
     const desc = getSelectedManualDescription();
     const amountStr = document.getElementById('manual-amount').value.trim();
     const category = document.getElementById('manual-category').value;
-    const purchaseType = document.getElementById('manual-purchase-type').value;
+    const purchaseType = document.getElementById('manual-purchase-type').checked ? 'joint' : 'single';
     const note = normalizeTransactionNote(document.getElementById('manual-note').value);
     const makeRecurring = document.getElementById('manual-recurring').checked;
     const recurringFrequency = document.getElementById('manual-recurring-frequency').value;

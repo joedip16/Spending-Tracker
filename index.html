@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260422-summary-alerts">
+    <link rel="stylesheet" href="styles.css?v=20260422-purchase-checkbox">
 </head>
 <body>
     <div id="app-splash" class="app-splash" aria-hidden="true">
@@ -289,11 +289,13 @@
                         <option value="uncategorized">Uncategorized</option>
                     </select>
 
-                    <label for="manual-purchase-type">Purchase Type:</label>
-                    <select id="manual-purchase-type" required>
-                        <option value="single">Single</option>
-                        <option value="joint">Joint</option>
-                    </select>
+                    <label class="purchase-toggle" for="manual-purchase-type">
+                        <input type="checkbox" id="manual-purchase-type">
+                        <span>
+                            <strong>Joint purchase</strong>
+                            <small>Leave unchecked for a single purchase.</small>
+                        </span>
+                    </label>
 
                     <label for="manual-note">Note:</label>
                     <textarea id="manual-note" rows="3" placeholder="Optional details, reminder, or context"></textarea>
@@ -715,11 +717,18 @@
             <label>Amount: <input type="number" id="edit-amount" inputmode="decimal" step="0.01" style="width:100%; padding:10px; margin:10px 0;"></label><br>
             <label>Category:
                 <select id="edit-category" style="width:100%; padding:10px; margin:10px 0;">
-                    <option value="income">Income</option>
+                    <option value="income">Income / Savings</option>
                     <option value="needs">Needs</option>
                     <option value="wants">Wants</option>
                     <option value="uncategorized">Uncategorized</option>
                 </select>
+            </label><br>
+            <label class="purchase-toggle" for="edit-purchase-type" style="margin:10px 0;">
+                <input type="checkbox" id="edit-purchase-type">
+                <span>
+                    <strong>Joint purchase</strong>
+                    <small>Leave unchecked for a single purchase.</small>
+                </span>
             </label><br>
             <button id="save-edit" style="background:#27ae60;">Save Changes</button>
             <button id="cancel-edit" style="background:#95a5a6; margin-left:10px;">Cancel</button>
@@ -733,6 +742,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js?v=20260422-appcheck"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260422-summary-alerts"></script>
+    <script src="script.js?v=20260422-purchase-checkbox"></script>
 </body>
 </html>
