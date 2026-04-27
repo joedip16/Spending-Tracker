@@ -24,6 +24,7 @@ let pendingImportHeaders = [];
 let pendingImportFileName = '';
 let pendingImportTransactions = [];
 let pendingImportHeaderRowIndex = 0;
+let pendingImportCategoryChoices = {};
 let firebaseApp = null;
 let firebaseAppCheck = null;
 let firebaseAuth = null;
@@ -3074,6 +3075,98 @@ function getImportedAmount(row, selection) {
     return 0;
 }
 
+function toCategoryDefaultName(description) {
+    return getBaseDescription(description)
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+function hasKnownImportedCategoryDescription(description) {
+    const baseDescription = getBaseDescription(description).toLowerCase();
+    if (!baseDescription) return true;
+
+    if (allTransactions.some(txn => getBaseDescription(txn.originalCategory).toLowerCase() === baseDescription)) {
+        return true;
+    }
+
+    return ['income', 'needs', 'wants'].some(type => Boolean(findMatchingCategoryName(type, baseDescription)));
+}
+
+function getUnrecognizedImportChoiceGroups() {
+    const groups = new Map();
+
+    pendingImportTransactions.forEach(txn => {
+        const baseDescription = getBaseDescription(txn.originalCategory);
+        const key = baseDescription.toLowerCase();
+        if (!baseDescription || hasKnownImportedCategoryDescription(baseDescription)) return;
+
+        if (!groups.has(key)) {
+            groups.set(key, {
+                key,
+                label: baseDescription,
+                count: 0,
+                suggestedCategory: txn.category === 'uncategorized' ? 'needs' : txn.category,
+                choice: pendingImportCategoryChoices[key] || ''
+            });
+        }
+
+        const group = groups.get(key);
+        group.count += 1;
+        if (!group.choice && pendingImportCategoryChoices[key]) {
+            group.choice = pendingImportCategoryChoices[key];
+        }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function renderUnrecognizedImportCategories() {
+    const section = document.getElementById('unrecognized-import-section');
+    const container = document.getElementById('unrecognized-import-list');
+    if (!section || !container) return;
+
+    const groups = getUnrecognizedImportChoiceGroups();
+    if (groups.length === 0) {
+        section.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+
+    section.style.display = 'block';
+    container.innerHTML = groups.map(group => `
+        <div class="unrecognized-import-row">
+            <div>
+                <strong>${escapeHtml(group.label)}</strong>
+                <small>${group.count} imported row${group.count === 1 ? '' : 's'} use this new description.</small>
+            </div>
+            <select class="unrecognized-import-select import-preview-select" data-key="${escapeHtml(group.key)}">
+                <option value="">Choose default type</option>
+                <option value="income" ${(group.choice || group.suggestedCategory) === 'income' ? 'selected' : ''}>Income / Savings</option>
+                <option value="needs" ${(group.choice || group.suggestedCategory) === 'needs' ? 'selected' : ''}>Needs</option>
+                <option value="wants" ${(group.choice || group.suggestedCategory) === 'wants' ? 'selected' : ''}>Wants</option>
+            </select>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.unrecognized-import-select').forEach(select => {
+        select.addEventListener('change', () => {
+            pendingImportCategoryChoices[select.dataset.key] = select.value;
+            renderImportPreview();
+        });
+    });
+}
+
+function applyPendingImportCategoryChoices(transaction) {
+    const baseDescription = getBaseDescription(transaction.originalCategory).toLowerCase();
+    const choice = pendingImportCategoryChoices[baseDescription];
+    if (choice) {
+        transaction.category = choice;
+    }
+    return transaction;
+}
+
 function getImportMappingStorageKey() {
     const userKey = syncUser?.uid || 'local';
     return `importColumnMapping:${userKey}:${pendingImportHeaders.map(header => header.toLowerCase()).join('|')}`;
@@ -3248,6 +3341,8 @@ function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -
             note
         };
 
+        applyPendingImportCategoryChoices(transaction);
+
         previewRows.push({
             ...transaction,
             purchaseType,
@@ -3310,6 +3405,7 @@ function renderImportPreview() {
 
     const tbody = document.querySelector('#import-preview-table tbody');
     updateImportPreviewSummary();
+    renderUnrecognizedImportCategories();
 
     if (!isValidImportMapping(selection)) {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Choose the Date, Description, and Amount columns above, then click Refresh Preview.</td></tr>';
@@ -3371,6 +3467,7 @@ function updateImportPreviewSummary() {
     const duplicateCount = pendingImportTransactions.filter(txn => txn.duplicate).length;
     const selectedCount = pendingImportTransactions.filter(txn => txn.selected).length;
     const skippedDuplicateCount = pendingImportTransactions.filter(txn => txn.duplicate && !txn.selected).length;
+    const unrecognizedCount = getUnrecognizedImportChoiceGroups().length;
     const summary = document.getElementById('import-preview-summary');
     if (!summary) return;
 
@@ -3379,7 +3476,7 @@ function updateImportPreviewSummary() {
         return;
     }
 
-    summary.textContent = `${pendingImportFileName}: ${pendingImportTransactions.length} valid row${pendingImportTransactions.length === 1 ? '' : 's'}, ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} found, ${skippedDuplicateCount} currently skipped, ${selectedCount} selected. Column choices are remembered for this format.`;
+    summary.textContent = `${pendingImportFileName}: ${pendingImportTransactions.length} valid row${pendingImportTransactions.length === 1 ? '' : 's'}, ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} found, ${skippedDuplicateCount} currently skipped, ${selectedCount} selected, ${unrecognizedCount} new categor${unrecognizedCount === 1 ? 'y' : 'ies'} to review. Column choices are remembered for this format.`;
 }
 
 function openImportPreview(rows, fileName) {
@@ -3397,6 +3494,7 @@ function openImportPreview(rows, fileName) {
     const headerDefaults = getBestImportColumnDefaults(pendingImportHeaders);
     const guessedDefaults = guessColumnsFromRows(rows, pendingImportHeaderRowIndex + 1);
     const defaults = isValidImportMapping(headerDefaults) ? headerDefaults : guessedDefaults;
+    pendingImportCategoryChoices = {};
 
     populateImportColumnSelectors(defaults);
     renderImportPreview();
@@ -3410,6 +3508,7 @@ function cancelImportPreview() {
     pendingImportFileName = '';
     pendingImportTransactions = [];
     pendingImportHeaderRowIndex = 0;
+    pendingImportCategoryChoices = {};
     document.getElementById('import-preview-section').style.display = 'none';
     document.getElementById('upload').value = '';
 }
@@ -3428,7 +3527,43 @@ function setDuplicateImportSelection(includeDuplicates) {
     updateImportPreviewSummary();
 }
 
+function saveRecognizedImportCategoryDefaults() {
+    const groups = getUnrecognizedImportChoiceGroups();
+    let addedCount = 0;
+
+    groups.forEach(group => {
+        const type = pendingImportCategoryChoices[group.key];
+        if (!type || !['income', 'needs', 'wants'].includes(type)) return;
+
+        const categoryName = toCategoryDefaultName(group.label);
+        const alreadyExists = getCategoryList(type).some(category =>
+            category.name.toLowerCase() === categoryName.toLowerCase() ||
+            category.keywords.some(keyword => keyword.toLowerCase() === group.key)
+        );
+
+        if (alreadyExists) return;
+
+        budgetCategories[type].push({
+            name: categoryName,
+            keywords: [group.key]
+        });
+        addedCount++;
+    });
+
+    if (addedCount > 0) {
+        saveBudgetCategories();
+        renderCategoryManager();
+    }
+}
+
 function confirmImportPreview() {
+    const unresolvedGroups = getUnrecognizedImportChoiceGroups().filter(group => !pendingImportCategoryChoices[group.key]);
+    if (unresolvedGroups.length > 0) {
+        alert('Please choose a default type for each unrecognized imported category before importing.');
+        document.getElementById('unrecognized-import-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+    }
+
     const selectedTransactions = pendingImportTransactions
         .filter(txn => txn.selected)
         .map(txn => {
@@ -3457,6 +3592,7 @@ function confirmImportPreview() {
     saveState("Import preview");
     isJoeViewActive = false;
     resetCalculatedOutput();
+    saveRecognizedImportCategoryDefaults();
 
     if (duplicateChoice === 'overwrite') {
         selectedTransactions.forEach(txn => {

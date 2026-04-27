@@ -1596,6 +1596,45 @@ table,
     margin: 0 0 14px;
 }
 
+.unrecognized-import-section {
+    margin: 18px 0;
+    padding: 18px;
+    border: 1px solid rgba(47, 111, 237, 0.18);
+    border-radius: 20px;
+    background: var(--surface-alt);
+}
+
+.unrecognized-import-section h4 {
+    margin-bottom: 6px;
+}
+
+.unrecognized-import-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.unrecognized-import-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+    gap: 14px;
+    align-items: center;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+}
+
+.unrecognized-import-row strong,
+.unrecognized-import-row small {
+    display: block;
+}
+
+.unrecognized-import-row small {
+    color: var(--muted);
+    margin-top: 4px;
+}
+
 .duplicate-pill,
 .ready-pill {
     display: inline-block;

@@ -194,6 +194,27 @@ test('import parsing detects Date/Category/Amount/Account CSV files', () => {
   assert.equal(previewRows[1].selected, true);
 });
 
+test('unrecognized imported categories can be assigned and saved as defaults', () => {
+  const app = loadApp();
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    allTransactions = [];
+    pendingImportTransactions = [{
+      date: '04/19/2026',
+      originalCategory: 'Mystery Merchant',
+      adjustedAmount: -25,
+      category: 'uncategorized',
+      rawAmount: -25,
+      selected: true
+    }];
+    pendingImportCategoryChoices = { 'mystery merchant': 'wants' };
+  `);
+
+  assert.equal(app.context.getUnrecognizedImportChoiceGroups().length, 1);
+  app.context.saveRecognizedImportCategoryDefaults();
+  assert.equal(app.run(`getCategoryList('wants').some(item => item.name === 'Mystery Merchant')`), true);
+});
+
 test('duplicate handling can find and overwrite identical transactions', () => {
   const app = loadApp();
   const original = {
