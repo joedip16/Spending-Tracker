@@ -164,8 +164,8 @@ test('import parsing detects Date/Category/Amount/Account CSV files', () => {
   const app = loadApp();
   const csv = [
     'Date,Category,Amount,Note,Account',
-    '04/19/2026,Eating Out (Joint),-7,,Joint',
-    '04/14/2026,Tax Returns,1405,,Single'
+    '04/19/2026,Eating Out (Joint),-7,Dinner after game,Joint',
+    '04/14/2026,Tax Returns,1405,State refund,Single'
   ].join('\n');
 
   const rows = app.context.parseCsvRows(csv);
@@ -190,7 +190,9 @@ test('import parsing detects Date/Category/Amount/Account CSV files', () => {
   assert.equal(previewRows[0].date, '04/19/2026');
   assert.equal(previewRows[0].purchaseType, 'joint');
   assert.equal(previewRows[0].category, 'wants');
+  assert.equal(previewRows[0].note, 'Dinner after game');
   assert.equal(previewRows[1].category, 'income');
+  assert.equal(previewRows[1].note, 'State refund');
   assert.equal(previewRows[1].selected, true);
 });
 

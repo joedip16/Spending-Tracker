@@ -3320,7 +3320,7 @@ function getBestImportColumnDefaults(headers) {
     const creditCol = findColumnByAliases(headers, ['credit', 'deposit', 'paid in', 'inflow']);
     const amountCol = findSignedAmountColumn(headers);
     const accountCol = findColumnByAliases(headers, ['account']);
-    const noteCol = findColumnByAliases(headers, ['note', 'notes', 'comment', 'comments']);
+    const noteCol = findColumnByAliases(headers, ['note', 'notes', 'comment', 'comments', 'message', 'reference']);
 
     return { dateCol, descriptionCol, amountCol, debitCol, creditCol, accountCol, noteCol };
 }
