@@ -1769,6 +1769,33 @@ tr:hover {
     box-shadow: 0 1px 0 rgba(104, 132, 168, 0.28), 0 8px 18px rgba(0, 0, 0, 0.12);
 }
 
+.breakdown-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    box-shadow: none;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.breakdown-group-toggle:hover,
+.breakdown-group-toggle:focus-visible {
+    color: white;
+    outline: none;
+    text-decoration: underline;
+}
+
+.breakdown-group-arrow {
+    display: inline-block;
+    width: 16px;
+    text-align: center;
+}
+
 .breakdown-controls {
     display: flex;
     flex-wrap: wrap;

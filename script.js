@@ -36,6 +36,11 @@ let syncDebounceTimer = null;
 let lastCloudStateJson = '';
 let onboardingStep = 0;
 let localStateUpdatedAt = '';
+let breakdownCollapsedGroups = {
+    income: false,
+    needs: false,
+    wants: false
+};
 
 const DEFAULT_BUDGET_GOALS = {
     needs: 50,
@@ -1990,6 +1995,32 @@ function updateUndoRedoButtons() {
 
     if (undoButton) undoButton.disabled = historyIndex < 1;
     if (redoButton) redoButton.disabled = historyIndex >= history.length - 1;
+}
+
+function updateBreakdownGroupVisibility() {
+    ['income', 'needs', 'wants'].forEach(group => {
+        const collapsed = Boolean(breakdownCollapsedGroups[group]);
+        document.querySelectorAll(`.breakdown-detail-${group}`).forEach(row => {
+            row.style.display = collapsed ? 'none' : '';
+        });
+        const toggle = document.querySelector(`.breakdown-group-toggle[data-breakdown-group="${group}"]`);
+        if (!toggle) return;
+        toggle.classList.toggle('collapsed', collapsed);
+        const arrow = toggle.querySelector('.breakdown-group-arrow');
+        if (arrow) arrow.textContent = collapsed ? '►' : '▼';
+    });
+}
+
+function attachBreakdownGroupListeners() {
+    document.querySelectorAll('.breakdown-group-toggle').forEach(button => {
+        button.addEventListener('click', () => {
+            const group = button.dataset.breakdownGroup;
+            if (!group) return;
+            breakdownCollapsedGroups[group] = !breakdownCollapsedGroups[group];
+            updateBreakdownGroupVisibility();
+        });
+    });
+    updateBreakdownGroupVisibility();
 }
 
 // Load persisted data
@@ -4442,12 +4473,21 @@ function calculateBreakdown(isJoeView = false) {
     visibleMonths.forEach(m => tableHTML += `<th>${m}</th>`);
     tableHTML += '<th>Yearly Average</th><th>Monthly Goal</th><th>Yearly Total</th></tr></thead><tbody>';
 
-    const addGroup = label => tableHTML += `<tr class="category-group"><td colspan="${visibleMonths.length + 4}">${label}</td></tr>`;
+    const addToggleGroup = (groupKey, label) => tableHTML += `
+        <tr class="category-group category-group-toggle-row">
+            <td colspan="${visibleMonths.length + 4}">
+                <button type="button" class="breakdown-group-toggle" data-breakdown-group="${groupKey}">
+                    <span class="breakdown-group-arrow">${breakdownCollapsedGroups[groupKey] ? '►' : '▼'}</span>
+                    <span>${label}</span>
+                </button>
+            </td>
+        </tr>
+    `;
 
     if (activeIncomeSources.length > 0 || totalIncome !== 0) {
-        addGroup('Income Sources');
+        addToggleGroup('income', 'Income Sources');
         activeIncomeSources.forEach(src => {
-            tableHTML += `<tr><td>${src}</td>`;
+            tableHTML += `<tr class="breakdown-detail breakdown-detail-income"><td>${src}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].incomeSources[src])}</td>`);
             tableHTML += `<td>$${formatMoney(yearlyIncomeSources[src] / yearlyNumMonths)}</td><td>${formatCategoryGoalCell('income', src, yearlyIncomeSources[src] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyIncomeSources[src])}</td></tr>`;
         });
@@ -4457,9 +4497,9 @@ function calculateBreakdown(isJoeView = false) {
     }
 
     if (activeNeedsSubcategories.length > 0 || totalNeeds !== 0) {
-        addGroup('Needs');
+        addToggleGroup('needs', 'Needs');
         activeNeedsSubcategories.forEach(sub => {
-            tableHTML += `<tr><td>${sub}</td>`;
+            tableHTML += `<tr class="breakdown-detail breakdown-detail-needs"><td>${sub}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].needsSubcategories[sub])}</td>`);
             tableHTML += `<td>$${formatMoney(yearlyNeedsSubcategories[sub] / yearlyNumMonths)}</td><td>${formatCategoryGoalCell('needs', sub, yearlyNeedsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyNeedsSubcategories[sub])}</td></tr>`;
         });
@@ -4469,9 +4509,9 @@ function calculateBreakdown(isJoeView = false) {
     }
 
     if (activeWantsSubcategories.length > 0 || totalWants !== 0) {
-        addGroup('Wants');
+        addToggleGroup('wants', 'Wants');
         activeWantsSubcategories.forEach(sub => {
-            tableHTML += `<tr><td>${sub}</td>`;
+            tableHTML += `<tr class="breakdown-detail breakdown-detail-wants"><td>${sub}</td>`;
             visibleMonths.forEach(m => tableHTML += `<td>$${formatMoney(monthlyData[m].wantsSubcategories[sub])}</td>`);
             tableHTML += `<td>$${formatMoney(yearlyWantsSubcategories[sub] / yearlyNumMonths)}</td><td>${formatCategoryGoalCell('wants', sub, yearlyWantsSubcategories[sub] / yearlyNumMonths)}</td><td>$${formatMoney(yearlyWantsSubcategories[sub])}</td></tr>`;
         });
@@ -4494,6 +4534,7 @@ function calculateBreakdown(isJoeView = false) {
 
     tableHTML += '</tbody></table></div>';
     document.getElementById('monthly-breakdown').innerHTML = tableHTML;
+    attachBreakdownGroupListeners();
 
     document.getElementById('totals-text').innerHTML = `
         <div class="progress-container">
