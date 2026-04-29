@@ -272,6 +272,21 @@ test('changing purchase type can update matching transactions in bulk', () => {
   assert.equal(app.run('manualTransactions[1].originalCategory'), 'Groceries');
 });
 
+test('stored ui collapse state preserves user choices', () => {
+  const app = loadApp();
+  app.run(`localStorage.setItem('categorySectionCollapsedStates', JSON.stringify({ needs: false }));`);
+
+  const loaded = app.context.loadStoredUiState('categorySectionCollapsedStates', {
+    income: true,
+    needs: true,
+    wants: true
+  });
+
+  assert.equal(loaded.income, true);
+  assert.equal(loaded.needs, false);
+  assert.equal(loaded.wants, true);
+});
+
 test('budget calculations summarize income, needs, wants, and personal joint splits', () => {
   const app = loadApp();
   const transactions = [

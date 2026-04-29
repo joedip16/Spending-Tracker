@@ -36,11 +36,31 @@ let syncDebounceTimer = null;
 let lastCloudStateJson = '';
 let onboardingStep = 0;
 let localStateUpdatedAt = '';
-let breakdownCollapsedGroups = {
+
+const DEFAULT_BREAKDOWN_COLLAPSED_GROUPS = {
     income: false,
     needs: false,
     wants: false
 };
+
+const DEFAULT_CATEGORY_SECTION_COLLAPSED = {
+    income: true,
+    needs: true,
+    wants: true
+};
+
+function loadStoredUiState(key, fallback) {
+    try {
+        const saved = localStorage.getItem(key);
+        return saved ? { ...fallback, ...JSON.parse(saved) } : { ...fallback };
+    } catch (error) {
+        return { ...fallback };
+    }
+}
+
+let breakdownCollapsedGroups = loadStoredUiState('breakdownCollapsedGroups', DEFAULT_BREAKDOWN_COLLAPSED_GROUPS);
+let categorySectionCollapsedStates = loadStoredUiState('categorySectionCollapsedStates', DEFAULT_CATEGORY_SECTION_COLLAPSED);
+let transactionsListCollapsed = localStorage.getItem('transactionsListCollapsed') !== 'false';
 
 const DEFAULT_BUDGET_GOALS = {
     needs: 50,
@@ -412,6 +432,10 @@ function refreshAfterCategoryChange() {
     }
 }
 
+function saveCategorySectionCollapsedStates() {
+    localStorage.setItem('categorySectionCollapsedStates', JSON.stringify(categorySectionCollapsedStates));
+}
+
 function renderCategoryManager() {
     const container = document.getElementById('category-manager-list');
     if (!container) return;
@@ -432,7 +456,7 @@ function renderCategoryManager() {
         `).join('');
 
         return `
-            <section class="category-manager-section collapsed" data-category-section="${type}">
+            <section class="category-manager-section ${categorySectionCollapsedStates[type] !== false ? 'collapsed' : ''}" data-category-section="${type}">
                 <button class="category-section-toggle" type="button" data-type="${type}">
                     <span>${formatCategoryType(type)}</span>
                     <span>${getCategoryList(type).length} categories</span>
@@ -446,7 +470,11 @@ function renderCategoryManager() {
 
     container.querySelectorAll('.category-section-toggle').forEach(button => {
         button.addEventListener('click', () => {
-            button.closest('.category-manager-section').classList.toggle('collapsed');
+            const section = button.closest('.category-manager-section');
+            const type = button.dataset.type;
+            const isCollapsed = section.classList.toggle('collapsed');
+            categorySectionCollapsedStates[type] = isCollapsed;
+            saveCategorySectionCollapsedStates();
         });
     });
 
@@ -2016,6 +2044,10 @@ function updateUndoRedoButtons() {
     if (redoButton) redoButton.disabled = historyIndex >= history.length - 1;
 }
 
+function saveBreakdownCollapsedGroups() {
+    localStorage.setItem('breakdownCollapsedGroups', JSON.stringify(breakdownCollapsedGroups));
+}
+
 function updateBreakdownGroupVisibility() {
     ['income', 'needs', 'wants'].forEach(group => {
         const collapsed = Boolean(breakdownCollapsedGroups[group]);
@@ -2036,6 +2068,7 @@ function attachBreakdownGroupListeners() {
             const group = button.dataset.breakdownGroup;
             if (!group) return;
             breakdownCollapsedGroups[group] = !breakdownCollapsedGroups[group];
+            saveBreakdownCollapsedGroups();
             updateBreakdownGroupVisibility();
         });
     });
@@ -2070,6 +2103,7 @@ function loadPersistedData() {
     renderCategoryManager();
     renderRecurringManager();
     setDemoModeStatus();
+    syncTransactionsListCollapsedState();
 
     if (allTransactions.length > 0) updateTransactions();
 
@@ -2111,8 +2145,9 @@ function syncResultsVisibility() {
     document.getElementById('results-section').style.display = hasTransactions ? 'block' : 'none';
 
     if (!hasTransactions) {
-        document.getElementById('transactions-container').style.display = 'none';
-        document.getElementById('toggle-arrow').textContent = '►';
+        transactionsListCollapsed = true;
+        saveTransactionsListCollapsedState();
+        syncTransactionsListCollapsedState();
         currentYear = null;
         currentMonth = 'all';
         resetCalculatedOutput();
@@ -2156,8 +2191,7 @@ function updateTransactions() {
 
     if (!allTransactions.length) return;
 
-    document.getElementById('transactions-container').style.display = 'none';
-    document.getElementById('toggle-arrow').textContent = '►';
+    syncTransactionsListCollapsedState();
     displayTransactions();
     populateYearSelector();
     populateMonthSelector();
@@ -3925,21 +3959,29 @@ document.addEventListener('keydown', event => {
 });
 
 // Toggle transactions
-function toggleTransactions() {
+function saveTransactionsListCollapsedState() {
+    localStorage.setItem('transactionsListCollapsed', transactionsListCollapsed ? 'true' : 'false');
+}
+
+function syncTransactionsListCollapsedState() {
     const container = document.getElementById('transactions-container');
     const arrow = document.getElementById('toggle-arrow');
-    if (container.style.display === 'none') {
-        container.style.display = 'block';
-        arrow.textContent = '▼';
-    } else {
-        container.style.display = 'none';
-        arrow.textContent = '►';
-    }
+    if (!container || !arrow) return;
+
+    container.style.display = transactionsListCollapsed ? 'none' : 'block';
+    arrow.textContent = transactionsListCollapsed ? '►' : '▼';
+}
+
+function toggleTransactions() {
+    transactionsListCollapsed = !transactionsListCollapsed;
+    saveTransactionsListCollapsedState();
+    syncTransactionsListCollapsedState();
 }
 
 function openTransactionsList() {
-    document.getElementById('transactions-container').style.display = 'block';
-    document.getElementById('toggle-arrow').textContent = '▼';
+    transactionsListCollapsed = false;
+    saveTransactionsListCollapsedState();
+    syncTransactionsListCollapsedState();
 }
 
 // Year selector
@@ -4375,8 +4417,7 @@ function switchPage(page) {
     });
 
     if (page === 'transactions' && document.getElementById('results-section').style.display !== 'none') {
-        document.getElementById('transactions-container').style.display = 'none';
-        document.getElementById('toggle-arrow').textContent = '►';
+        syncTransactionsListCollapsedState();
     }
 }
 
