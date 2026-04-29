@@ -516,7 +516,12 @@
                         </div>
 
                         <div id="category-manager-list" class="category-manager-list"></div>
-                        <button id="reset-categories-btn" class="secondary-button">Reset Default Categories</button>
+                        <p id="category-manager-status" class="backup-status">No pending category edits.</p>
+                        <div class="settings-actions">
+                            <button id="save-category-manager-btn">Save Category Changes</button>
+                            <button id="discard-category-manager-btn" class="secondary-button">Discard Unsaved Changes</button>
+                            <button id="reset-categories-btn" class="secondary-button">Reset Default Categories</button>
+                        </div>
                     </section>
 
                     <section class="panel settings-card recurring-manager-card">
@@ -752,6 +757,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js?v=20260422-appcheck"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260429-persist-collapse-state"></script>
+    <script src="script.js?v=20260429-category-save-all-warning"></script>
 </body>
 </html>

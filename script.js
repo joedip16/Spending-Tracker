@@ -19,6 +19,8 @@ let budgetCategories = null;
 let recurringTransactions = [];
 let skippedRecurringOccurrences = [];
 let budgetGoals = null;
+let categoryManagerDraft = null;
+let categoryManagerDirty = false;
 let pendingImportRows = [];
 let pendingImportHeaders = [];
 let pendingImportFileName = '';
@@ -354,6 +356,8 @@ function loadBudgetCategories() {
     const savedCategories = localStorage.getItem('budgetCategories');
     if (!savedCategories) {
         budgetCategories = cloneDefaultCategories();
+        categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+        categoryManagerDirty = false;
         return;
     }
 
@@ -362,12 +366,22 @@ function loadBudgetCategories() {
     } catch (error) {
         budgetCategories = cloneDefaultCategories();
     }
+    categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+    categoryManagerDirty = false;
 }
 
 function saveBudgetCategories() {
     budgetCategories = normalizeBudgetCategories(budgetCategories);
     localStorage.setItem('budgetCategories', JSON.stringify(budgetCategories));
     queueCloudSync();
+}
+
+function ensureCategoryManagerDraft() {
+    if (!budgetCategories) loadBudgetCategories();
+    if (!categoryManagerDraft) {
+        categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+    }
+    return categoryManagerDraft;
 }
 
 function getCategoryList(type) {
@@ -436,12 +450,22 @@ function saveCategorySectionCollapsedStates() {
     localStorage.setItem('categorySectionCollapsedStates', JSON.stringify(categorySectionCollapsedStates));
 }
 
+function setCategoryManagerDirty(isDirty, statusMessage = '') {
+    categoryManagerDirty = isDirty;
+    const status = document.getElementById('category-manager-status');
+    if (!status) return;
+    status.textContent = statusMessage || (isDirty
+        ? 'You have unsaved category edits.'
+        : 'No pending category edits.');
+}
+
 function renderCategoryManager() {
     const container = document.getElementById('category-manager-list');
     if (!container) return;
+    const draft = ensureCategoryManagerDraft();
 
     container.innerHTML = ['needs', 'wants', 'income'].map(type => {
-        const rows = getCategoryList(type).map((category, index) => `
+        const rows = draft[type].map((category, index) => `
             <div class="category-row" data-type="${type}" data-index="${index}">
                 <input type="text" class="category-name-input" value="${escapeHtml(category.name)}" aria-label="${formatCategoryType(type)} category name">
                 <input type="text" class="category-keywords-input" value="${escapeHtml(category.keywords.join(', '))}" aria-label="${escapeHtml(category.name)} keywords">
@@ -450,7 +474,6 @@ function renderCategoryManager() {
                     <option value="single" ${category.defaultPurchaseType !== 'joint' ? 'selected' : ''}>Single default</option>
                     <option value="joint" ${category.defaultPurchaseType === 'joint' ? 'selected' : ''}>Joint default</option>
                 </select>
-                <button class="save-category-btn" data-type="${type}" data-index="${index}">Save</button>
                 <button class="delete-category-btn danger-button" data-type="${type}" data-index="${index}">Delete</button>
             </div>
         `).join('');
@@ -459,7 +482,7 @@ function renderCategoryManager() {
             <section class="category-manager-section ${categorySectionCollapsedStates[type] !== false ? 'collapsed' : ''}" data-category-section="${type}">
                 <button class="category-section-toggle" type="button" data-type="${type}">
                     <span>${formatCategoryType(type)}</span>
-                    <span>${getCategoryList(type).length} categories</span>
+                    <span>${draft[type].length} categories</span>
                 </button>
                 <div class="category-section-body">
                     ${rows || '<p class="panel-copy">No categories yet.</p>'}
@@ -478,46 +501,89 @@ function renderCategoryManager() {
         });
     });
 
-    container.querySelectorAll('.save-category-btn').forEach(button => {
-        button.addEventListener('click', () => {
-            const row = button.closest('.category-row');
-            const type = button.dataset.type;
-            const index = parseInt(button.dataset.index, 10);
-            const name = row.querySelector('.category-name-input').value.trim();
-            const keywords = row.querySelector('.category-keywords-input').value
-                .split(',')
-                .map(keyword => keyword.trim())
-                .filter(Boolean);
-            const goalValue = parseFloat(row.querySelector('.category-goal-input').value);
-            const goal = Number.isNaN(goalValue) || goalValue <= 0 ? null : goalValue;
-            const defaultPurchaseType = row.querySelector('.category-purchase-type-input').value === 'joint' ? 'joint' : 'single';
-
-            if (!name) {
-                alert('Please enter a category name.');
-                return;
-            }
-
-            budgetCategories[type][index] = { name, keywords, goal, defaultPurchaseType };
-            saveBudgetCategories();
-            refreshAfterCategoryChange();
-        });
+    container.querySelectorAll('.category-row input, .category-row select').forEach(input => {
+        input.addEventListener('input', () => updateCategoryDraftFromRow(input.closest('.category-row')));
+        input.addEventListener('change', () => updateCategoryDraftFromRow(input.closest('.category-row')));
     });
 
     container.querySelectorAll('.delete-category-btn').forEach(button => {
         button.addEventListener('click', () => {
             const type = button.dataset.type;
             const index = parseInt(button.dataset.index, 10);
-            const category = budgetCategories[type][index];
+            const category = draft[type][index];
             if (!confirm(`Delete "${category.name}" from ${formatCategoryType(type)}?`)) return;
 
-            budgetCategories[type].splice(index, 1);
-            saveBudgetCategories();
-            refreshAfterCategoryChange();
+            draft[type].splice(index, 1);
+            setCategoryManagerDirty(true);
+            renderCategoryManager();
         });
     });
+
+    setCategoryManagerDirty(categoryManagerDirty);
+}
+
+function updateCategoryDraftFromRow(row) {
+    if (!row) return;
+    const type = row.dataset.type;
+    const index = parseInt(row.dataset.index, 10);
+    const draft = ensureCategoryManagerDraft();
+    if (!draft[type] || Number.isNaN(index) || !draft[type][index]) return;
+
+    const goalValue = parseFloat(row.querySelector('.category-goal-input').value);
+    draft[type][index] = {
+        name: row.querySelector('.category-name-input').value.trim(),
+        keywords: row.querySelector('.category-keywords-input').value
+            .split(',')
+            .map(keyword => keyword.trim())
+            .filter(Boolean),
+        goal: Number.isNaN(goalValue) || goalValue <= 0 ? null : goalValue,
+        defaultPurchaseType: row.querySelector('.category-purchase-type-input').value === 'joint' ? 'joint' : 'single'
+    };
+    setCategoryManagerDirty(true);
+}
+
+function validateCategoryManagerDraft() {
+    const draft = ensureCategoryManagerDraft();
+
+    for (const type of ['needs', 'wants', 'income']) {
+        const names = new Set();
+        for (const category of draft[type]) {
+            if (!category.name) {
+                alert('Please enter a category name for every category row before saving.');
+                return false;
+            }
+            const normalizedName = category.name.toLowerCase();
+            if (names.has(normalizedName)) {
+                alert(`"${category.name}" appears more than once in ${formatCategoryType(type)}. Please make the names unique before saving.`);
+                return false;
+            }
+            names.add(normalizedName);
+        }
+    }
+
+    return true;
+}
+
+function saveCategoryManagerChanges() {
+    if (!validateCategoryManagerDraft()) return false;
+
+    budgetCategories = normalizeBudgetCategories(ensureCategoryManagerDraft());
+    saveBudgetCategories();
+    categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+    setCategoryManagerDirty(false, 'Category changes saved.');
+    refreshAfterCategoryChange();
+    return true;
+}
+
+function discardCategoryManagerChanges() {
+    if (!categoryManagerDirty) return;
+    categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+    setCategoryManagerDirty(false, 'Unsaved category changes discarded.');
+    renderCategoryManager();
 }
 
 function addManagedCategory() {
+    const draft = ensureCategoryManagerDraft();
     const type = document.getElementById('new-category-type').value;
     const nameInput = document.getElementById('new-category-name');
     const keywordsInput = document.getElementById('new-category-keywords');
@@ -531,24 +597,24 @@ function addManagedCategory() {
         return;
     }
 
-    if (getCategoryList(type).some(category => category.name.toLowerCase() === name.toLowerCase())) {
+    if (draft[type].some(category => category.name.toLowerCase() === name.toLowerCase())) {
         alert('That category already exists in this group.');
         return;
     }
 
-    budgetCategories[type].push({ name, keywords, goal: null, defaultPurchaseType });
-    saveBudgetCategories();
+    draft[type].push({ name, keywords, goal: null, defaultPurchaseType });
     nameInput.value = '';
     keywordsInput.value = '';
     purchaseTypeInput.value = 'single';
-    refreshAfterCategoryChange();
+    setCategoryManagerDirty(true);
+    renderCategoryManager();
 }
 
 function resetManagedCategories() {
-    if (!confirm('Reset categories back to the original defaults?')) return;
-    budgetCategories = cloneDefaultCategories();
-    saveBudgetCategories();
-    refreshAfterCategoryChange();
+    if (!confirm('Reset the category draft back to the original defaults? You can still review it before saving.')) return;
+    categoryManagerDraft = cloneDefaultCategories();
+    setCategoryManagerDirty(true);
+    renderCategoryManager();
 }
 
 function getCurrentMonthInputValue() {
@@ -1127,6 +1193,8 @@ function applyRestoredAppState(restoredData) {
         importedTransactions = restoredData.importedTransactions;
         manualTransactions = restoredData.manualTransactions;
         budgetCategories = restoredData.budgetCategories;
+        categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+        categoryManagerDirty = false;
         budgetGoals = restoredData.budgetGoals;
         recurringTransactions = restoredData.recurringTransactions;
         skippedRecurringOccurrences = restoredData.skippedRecurringOccurrences;
@@ -1556,6 +1624,8 @@ function clearLocalAppData() {
         currentSnapshotTab = 'overview';
         budgetCategories = cloneDefaultCategories();
         budgetGoals = { ...DEFAULT_BUDGET_GOALS };
+        categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+        categoryManagerDirty = false;
         recurringTransactions = [];
         skippedRecurringOccurrences = [];
         history = [];
@@ -4405,6 +4475,17 @@ function attachViewModeListeners() {
 }
 
 function switchPage(page) {
+    if (currentPage === 'settings' && page !== 'settings' && categoryManagerDirty) {
+        const shouldSave = confirm('You have unsaved category changes. Press OK to save them before leaving Settings.');
+        if (shouldSave) {
+            if (!saveCategoryManagerChanges()) return false;
+        } else {
+            const shouldDiscard = confirm('Discard your unsaved category changes and leave Settings?');
+            if (!shouldDiscard) return false;
+            discardCategoryManagerChanges();
+        }
+    }
+
     currentPage = page;
     document.getElementById('home-page').classList.toggle('active', page === 'home');
     document.getElementById('transactions-page').classList.toggle('active', page === 'transactions');
@@ -4419,6 +4500,7 @@ function switchPage(page) {
     if (page === 'transactions' && document.getElementById('results-section').style.display !== 'none') {
         syncTransactionsListCollapsedState();
     }
+    return true;
 }
 
 function attachNavigationListeners() {
@@ -4446,6 +4528,12 @@ function attachNavigationListeners() {
         setDarkMode(event.target.checked);
     });
     document.getElementById('add-category-btn').addEventListener('click', addManagedCategory);
+    document.getElementById('save-category-manager-btn').addEventListener('click', saveCategoryManagerChanges);
+    document.getElementById('discard-category-manager-btn').addEventListener('click', () => {
+        if (!categoryManagerDirty) return;
+        if (!confirm('Discard your unsaved category changes?')) return;
+        discardCategoryManagerChanges();
+    });
     document.getElementById('reset-categories-btn').addEventListener('click', resetManagedCategories);
     document.getElementById('add-recurring-btn').addEventListener('click', addRecurringTransaction);
     document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
@@ -4736,3 +4824,8 @@ window.addEventListener('online', () => {
     queueCloudSync();
 });
 window.addEventListener('offline', updateConnectionBanner);
+window.addEventListener('beforeunload', event => {
+    if (!categoryManagerDirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+});

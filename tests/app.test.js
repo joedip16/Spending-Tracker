@@ -35,9 +35,11 @@ function createMockElement(id = '') {
     style: {},
     classList: createClassList(),
     children: [],
+    options: [],
     addEventListener() {},
     appendChild(child) {
       this.children.push(child);
+      this.options.push(child);
       return child;
     },
     remove() {},
@@ -285,6 +287,25 @@ test('stored ui collapse state preserves user choices', () => {
   assert.equal(loaded.income, true);
   assert.equal(loaded.needs, false);
   assert.equal(loaded.wants, true);
+});
+
+test('category manager saves all draft edits at once', () => {
+  const app = loadApp();
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+    categoryManagerDraft.needs[0] = {
+      ...categoryManagerDraft.needs[0],
+      name: 'Mortgage Updated',
+      defaultPurchaseType: 'joint'
+    };
+    categoryManagerDirty = true;
+  `);
+
+  assert.equal(app.context.saveCategoryManagerChanges(), true);
+  assert.equal(app.run(`budgetCategories.needs[0].name`), 'Mortgage Updated');
+  assert.equal(app.run(`budgetCategories.needs[0].defaultPurchaseType`), 'joint');
+  assert.equal(app.run(`categoryManagerDirty`), false);
 });
 
 test('budget calculations summarize income, needs, wants, and personal joint splits', () => {

@@ -1074,7 +1074,7 @@ table,
 .category-add-form,
 .recurring-add-form {
     display: grid;
-    grid-template-columns: 0.9fr 1fr 1.4fr auto;
+    grid-template-columns: 0.9fr 1fr 1.4fr 1fr auto;
     gap: 10px;
     margin: 20px 0;
 }
@@ -1088,6 +1088,7 @@ table,
 .recurring-add-form input,
 .recurring-add-form select,
 .category-row input,
+.category-row select,
 .category-goal-input {
     width: 100%;
     border: 1px solid var(--line);
