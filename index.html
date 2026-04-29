@@ -508,6 +508,10 @@
                             </select>
                             <input type="text" id="new-category-name" placeholder="Category name">
                             <input type="text" id="new-category-keywords" placeholder="Keywords, separated by commas">
+                            <select id="new-category-purchase-type">
+                                <option value="single">Single default</option>
+                                <option value="joint">Joint default</option>
+                            </select>
                             <button id="add-category-btn">Add Category</button>
                         </div>
 
@@ -748,6 +752,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js?v=20260422-appcheck"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260429-bulk-single-joint-edit"></script>
+    <script src="script.js?v=20260429-category-default-purchase-type"></script>
 </body>
 </html>

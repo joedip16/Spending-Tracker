@@ -315,7 +315,8 @@ function normalizeCategoryList(list, fallbackList) {
             keywords: Array.isArray(category?.keywords)
                 ? category.keywords.map(keyword => String(keyword).trim()).filter(Boolean)
                 : String(category?.keywords || '').split(',').map(keyword => keyword.trim()).filter(Boolean),
-            goal: Number(category?.goal) > 0 ? Number(category.goal) : null
+            goal: Number(category?.goal) > 0 ? Number(category.goal) : null,
+            defaultPurchaseType: category?.defaultPurchaseType === 'joint' ? 'joint' : 'single'
         }))
         .filter(category => category.name);
 }
@@ -378,6 +379,15 @@ function findMatchingCategoryName(type, text) {
     return match?.name || null;
 }
 
+function findMatchingCategory(type, text) {
+    return getCategoryList(type).find(category => categoryMatchesText(category, text)) || null;
+}
+
+function getCategoryDefaultPurchaseType(type, name) {
+    const match = getCategoryList(type).find(category => category.name === name);
+    return match?.defaultPurchaseType === 'joint' ? 'joint' : 'single';
+}
+
 function formatCategoryType(type) {
     if (type === 'income') return 'Income / Savings';
     return type.charAt(0).toUpperCase() + type.slice(1);
@@ -412,6 +422,10 @@ function renderCategoryManager() {
                 <input type="text" class="category-name-input" value="${escapeHtml(category.name)}" aria-label="${formatCategoryType(type)} category name">
                 <input type="text" class="category-keywords-input" value="${escapeHtml(category.keywords.join(', '))}" aria-label="${escapeHtml(category.name)} keywords">
                 <input type="number" class="category-goal-input" min="0" step="0.01" value="${category.goal || ''}" placeholder="Monthly goal $" aria-label="${escapeHtml(category.name)} monthly goal">
+                <select class="category-purchase-type-input" aria-label="${escapeHtml(category.name)} default purchase type">
+                    <option value="single" ${category.defaultPurchaseType !== 'joint' ? 'selected' : ''}>Single default</option>
+                    <option value="joint" ${category.defaultPurchaseType === 'joint' ? 'selected' : ''}>Joint default</option>
+                </select>
                 <button class="save-category-btn" data-type="${type}" data-index="${index}">Save</button>
                 <button class="delete-category-btn danger-button" data-type="${type}" data-index="${index}">Delete</button>
             </div>
@@ -448,13 +462,14 @@ function renderCategoryManager() {
                 .filter(Boolean);
             const goalValue = parseFloat(row.querySelector('.category-goal-input').value);
             const goal = Number.isNaN(goalValue) || goalValue <= 0 ? null : goalValue;
+            const defaultPurchaseType = row.querySelector('.category-purchase-type-input').value === 'joint' ? 'joint' : 'single';
 
             if (!name) {
                 alert('Please enter a category name.');
                 return;
             }
 
-            budgetCategories[type][index] = { name, keywords, goal };
+            budgetCategories[type][index] = { name, keywords, goal, defaultPurchaseType };
             saveBudgetCategories();
             refreshAfterCategoryChange();
         });
@@ -478,8 +493,10 @@ function addManagedCategory() {
     const type = document.getElementById('new-category-type').value;
     const nameInput = document.getElementById('new-category-name');
     const keywordsInput = document.getElementById('new-category-keywords');
+    const purchaseTypeInput = document.getElementById('new-category-purchase-type');
     const name = nameInput.value.trim();
     const keywords = keywordsInput.value.split(',').map(keyword => keyword.trim()).filter(Boolean);
+    const defaultPurchaseType = purchaseTypeInput.value === 'joint' ? 'joint' : 'single';
 
     if (!name) {
         alert('Please enter a category name.');
@@ -491,10 +508,11 @@ function addManagedCategory() {
         return;
     }
 
-    budgetCategories[type].push({ name, keywords, goal: null });
+    budgetCategories[type].push({ name, keywords, goal: null, defaultPurchaseType });
     saveBudgetCategories();
     nameInput.value = '';
     keywordsInput.value = '';
+    purchaseTypeInput.value = 'single';
     refreshAfterCategoryChange();
 }
 
@@ -907,8 +925,8 @@ function buildBackupCsv(payload) {
         ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '']),
         ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note'],
         ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '']),
-        ['budgetCategory', 'type', 'name', 'keywords', 'monthlyGoal'],
-        ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || ''])),
+        ['budgetCategory', 'type', 'name', 'keywords', 'monthlyGoal', 'defaultPurchaseType'],
+        ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || '', category.defaultPurchaseType || 'single'])),
         ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate'],
         ...data.recurringTransactions.map(item => ['recurringTransaction', item.id, item.description, item.amount, item.category, item.purchaseType, item.frequency || 'monthly', item.dayOfMonth, item.startMonth || '', item.startDate || '']),
         ['skippedRecurringOccurrence', 'key'],
@@ -992,7 +1010,8 @@ function parseBackupCsv(csvText) {
                 data.budgetCategories[type].push({
                     name: row[2] || '',
                     keywords: String(row[3] || '').split('|').map(keyword => keyword.trim()).filter(Boolean),
-                    goal: Number(row[4]) > 0 ? Number(row[4]) : null
+                    goal: Number(row[4]) > 0 ? Number(row[4]) : null,
+                    defaultPurchaseType: row[5] === 'joint' ? 'joint' : 'single'
                 });
             }
         } else if (section === 'recurringTransaction' && row[1] !== 'id') {
@@ -2442,6 +2461,21 @@ function inferCategoryForDescription(description) {
     return categorizeTransaction(baseDescription, description, 1);
 }
 
+function inferPurchaseTypeForDescription(description, category) {
+    const baseDescription = getBaseDescription(description).toLowerCase();
+    if (!baseDescription) return 'single';
+
+    const previousMatches = allTransactions.filter(txn => getBaseDescription(txn.originalCategory).toLowerCase() === baseDescription);
+    if (previousMatches.length > 0) {
+        const jointCount = previousMatches.filter(txn => getTransactionPurchaseType(txn) === 'joint').length;
+        return jointCount > previousMatches.length / 2 ? 'joint' : 'single';
+    }
+
+    if (!category || category === 'uncategorized') return 'single';
+    const match = findMatchingCategory(category, baseDescription);
+    return match?.defaultPurchaseType === 'joint' ? 'joint' : 'single';
+}
+
 function normalizeManualAmountSign(category) {
     const amountInput = document.getElementById('manual-amount');
     if (!amountInput) return;
@@ -2477,6 +2511,7 @@ function applyManualCategorySuggestion() {
 
     categoryInput.value = category;
     normalizeManualAmountSign(category);
+    document.getElementById('manual-purchase-type').checked = inferPurchaseTypeForDescription(description, category) === 'joint';
 }
 
 function renderMonthlyCashflowBars(yearSnapshot, months) {
