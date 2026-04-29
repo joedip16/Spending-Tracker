@@ -252,6 +252,26 @@ test('duplicate handling can find and overwrite identical transactions', () => {
   assert.equal(app.run('importedTransactions.length'), 1);
 });
 
+test('changing purchase type can update matching transactions in bulk', () => {
+  const app = loadApp();
+  const transactions = [
+    { date: '04/01/2026', originalCategory: 'Eating Out', adjustedAmount: -25, category: 'wants', rawAmount: -25 },
+    { date: '04/02/2026', originalCategory: 'Eating Out', adjustedAmount: -42, category: 'wants', rawAmount: -42 },
+    { date: '04/03/2026', originalCategory: 'Groceries', adjustedAmount: -80, category: 'needs', rawAmount: -80 }
+  ];
+
+  app.run(`
+    importedTransactions = [__testValue[0]];
+    manualTransactions = [__testValue[1], __testValue[2]];
+    allTransactions = [...importedTransactions, ...manualTransactions];
+  `, transactions);
+
+  assert.equal(app.context.countRelatedTransactions('Eating Out', app.run('allTransactions[0]')), 1);
+  assert.equal(app.context.updateMatchingTransactionsPurchaseType('Eating Out', 'joint', app.run('allTransactions[0]')), 1);
+  assert.equal(app.run('manualTransactions[0].originalCategory'), 'Eating Out (joint)');
+  assert.equal(app.run('manualTransactions[1].originalCategory'), 'Groceries');
+});
+
 test('budget calculations summarize income, needs, wants, and personal joint splits', () => {
   const app = loadApp();
   const transactions = [

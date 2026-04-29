@@ -2314,6 +2314,48 @@ function getBaseDescription(description) {
     return String(description || '').replace(/\s+\(joint\)$/i, '').trim();
 }
 
+function getTransactionPurchaseType(txn) {
+    return /\(joint\)$/i.test(String(txn?.originalCategory || '')) ? 'joint' : 'single';
+}
+
+function withPurchaseTypeDescription(description, purchaseType) {
+    const baseDescription = getBaseDescription(description);
+    return purchaseType === 'joint' ? `${baseDescription} (joint)` : baseDescription;
+}
+
+function countRelatedTransactions(baseDescription, excludedTransaction = null) {
+    const lookup = getBaseDescription(baseDescription).toLowerCase();
+    return allTransactions.filter(txn =>
+        txn !== excludedTransaction &&
+        getBaseDescription(txn.originalCategory).toLowerCase() === lookup
+    ).length;
+}
+
+function updateMatchingTransactionsPurchaseType(baseDescription, purchaseType, excludedTransaction = null) {
+    const lookup = getBaseDescription(baseDescription).toLowerCase();
+    let updatedCount = 0;
+
+    importedTransactions = importedTransactions.map(txn => {
+        if (txn === excludedTransaction || getBaseDescription(txn.originalCategory).toLowerCase() !== lookup) return txn;
+        updatedCount++;
+        return {
+            ...txn,
+            originalCategory: withPurchaseTypeDescription(txn.originalCategory, purchaseType)
+        };
+    });
+
+    manualTransactions = manualTransactions.map(txn => {
+        if (txn === excludedTransaction || getBaseDescription(txn.originalCategory).toLowerCase() !== lookup) return txn;
+        updatedCount++;
+        return {
+            ...txn,
+            originalCategory: withPurchaseTypeDescription(txn.originalCategory, purchaseType)
+        };
+    });
+
+    return updatedCount;
+}
+
 function getManualDescriptionOptions() {
     const counts = new Map();
 
@@ -3776,8 +3818,22 @@ document.getElementById('save-edit').addEventListener('click', () => {
     saveState("Edit transaction");
 
     const oldTxn = allTransactions[editingIndex];
+    const oldPurchaseType = getTransactionPurchaseType(oldTxn);
     const baseDescription = desc.replace(/\s+\(joint\)$/i, '').trim();
-    const finalDescription = purchaseType === 'joint' ? `${baseDescription} (joint)` : baseDescription;
+    const finalDescription = withPurchaseTypeDescription(baseDescription, purchaseType);
+    const relatedCount = oldPurchaseType !== purchaseType
+        ? countRelatedTransactions(oldTxn.originalCategory, oldTxn)
+        : 0;
+
+    if (relatedCount > 0) {
+        const applyToAll = confirm(
+            `Change ${relatedCount} other "${getBaseDescription(oldTxn.originalCategory)}" transaction${relatedCount === 1 ? '' : 's'} from ${oldPurchaseType} to ${purchaseType} too?`
+        );
+        if (applyToAll) {
+            updateMatchingTransactionsPurchaseType(oldTxn.originalCategory, purchaseType, oldTxn);
+        }
+    }
+
     const updatedTxn = {
         date,
         originalCategory: finalDescription,
