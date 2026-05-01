@@ -663,6 +663,13 @@ test('private beta rollout only allows allowlisted emails', () => {
   assert.equal(app.context.isUserEligibleForBankSyncRollout({ email: 'blocked@example.com' }), false);
 });
 
+test('bank sync card hides completely when public feature flag is off', () => {
+  const app = loadApp();
+  app.context.window.showBankSyncFeature = false;
+  app.context.updateSyncUi(null);
+  assert.equal(app.run(`document.querySelector('.bank-sync-card').style.display`), 'none');
+});
+
 test('bank sync diagnostics warn when production readiness items are missing', () => {
   const app = loadApp();
   app.run(`

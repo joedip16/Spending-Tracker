@@ -5,6 +5,7 @@ window.firebaseAppCheckEnabled = true;
 window.firebaseAppCheckSiteKey = "6LfK98QsAAAAAI9_Ji69Hs9rn8icMAX7K6c8c0rN";
 window.firebaseAppCheckDebugToken = false;
 window.bankSyncEnabled = true;
+window.showBankSyncFeature = false;
 window.bankSyncRolloutStage = "sandbox";
 window.bankSyncAllowedEmails = [];
 window.appSupportEmail = "";

@@ -1265,6 +1265,10 @@ function getSupportEmail() {
     return String(window.appSupportEmail || '').trim();
 }
 
+function shouldShowBankSyncFeature() {
+    return window.showBankSyncFeature !== false;
+}
+
 function getBankSyncRolloutStage() {
     const stage = String(window.bankSyncRolloutStage || 'sandbox').trim().toLowerCase();
     return ['sandbox', 'private-beta', 'live'].includes(stage) ? stage : 'sandbox';
@@ -1430,6 +1434,8 @@ function updateSyncUi(user = syncUser) {
     userPanel.style.display = user ? 'block' : 'none';
     userEmail.textContent = user?.email || '';
     renderSupportContactInfo();
+    const bankSyncCard = document.querySelector('.bank-sync-card');
+    if (bankSyncCard) bankSyncCard.style.display = shouldShowBankSyncFeature() ? '' : 'none';
     updateBankSyncUi(user);
 }
 
@@ -1440,6 +1446,7 @@ function updateBankSyncUi(user = syncUser) {
     const kicker = document.getElementById('bank-sync-kicker');
     const helperText = document.getElementById('bank-sync-helper-text');
     if (!connectButton || !pullButton || !sandboxButton || !kicker || !helperText) return;
+    if (!shouldShowBankSyncFeature()) return;
 
     const configured = Boolean(window.bankSyncEnabled && firebaseFunctions && window.Plaid);
     const rolloutEligible = isUserEligibleForBankSyncRollout(user);
