@@ -1823,6 +1823,27 @@ function getCurrentBreakdownLabel(isPersonalView) {
     return isPersonalView ? getPersonalViewLabel() : getSharedViewLabel();
 }
 
+function isPartnerIncomeTransaction(txn) {
+    if (txn?.category !== 'income') return false;
+
+    const purchaseType = getTransactionPurchaseType(txn);
+    if (purchaseType === 'joint') return true;
+
+    const description = getBaseDescription(txn.originalCategory).toLowerCase();
+    if (!description) return false;
+
+    const personalName = String(currentProfile?.name || '').trim().toLowerCase();
+    if (personalName && description.includes(personalName)) return false;
+    if (description.includes('partner') || description.includes('leah')) return true;
+
+    const matchedIncomeCategory = findMatchingCategory('income', description);
+    if (!matchedIncomeCategory) return false;
+
+    const categoryName = matchedIncomeCategory.name.toLowerCase();
+    if (personalName && categoryName.includes(personalName)) return false;
+    return categoryName.includes('partner') || categoryName.includes('leah');
+}
+
 function updateBreakdownButtonLabels() {
     const singleButton = document.getElementById('single-view-btn');
     const jointButton = document.getElementById('joint-view-btn');
@@ -2438,6 +2459,8 @@ function getBaseDescription(description) {
 }
 
 function getTransactionPurchaseType(txn) {
+    if (txn?.purchaseType === 'joint') return 'joint';
+    if (txn?.purchaseType === 'single') return 'single';
     return /\(joint\)$/i.test(String(txn?.originalCategory || '')) ? 'joint' : 'single';
 }
 
@@ -2981,7 +3004,7 @@ function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
 
         const monthName = months[parseInt(match[1], 10) - 1];
         const lc = txn.originalCategory.toLowerCase();
-        const isJoint = lc.includes('(joint)');
+        const isJoint = getTransactionPurchaseType(txn) === 'joint';
         const isAlwaysJointNeed = alwaysJointNeeds.some(kw => lc.includes(kw));
 
         let amount = txn.adjustedAmount;
@@ -2989,7 +3012,7 @@ function buildBudgetSnapshot(year, isJoeView = false, monthFilter = 'all') {
 
         if (isJoeView) {
             if (txn.category === 'income') {
-                if (lc.includes('leah paycheck') || isJoint) {
+                if (isPartnerIncomeTransaction(txn)) {
                     amount = 0;
                     absAmt = 0;
                 }

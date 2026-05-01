@@ -311,13 +311,17 @@ test('category manager saves all draft edits at once', () => {
 test('budget calculations summarize income, needs, wants, and personal joint splits', () => {
   const app = loadApp();
   const transactions = [
-    { date: '04/05/2026', originalCategory: 'Demo Paycheck', adjustedAmount: 3200, category: 'income', rawAmount: 3200 },
-    { date: '04/05/2026', originalCategory: 'Partner Paycheck (joint)', adjustedAmount: 2400, category: 'income', rawAmount: 2400 },
+    { date: '04/05/2026', originalCategory: 'Demo Paycheck', adjustedAmount: 3200, category: 'income', rawAmount: 3200, purchaseType: 'single' },
+    { date: '04/05/2026', originalCategory: 'Partner Paycheck', adjustedAmount: 2400, category: 'income', rawAmount: 2400, purchaseType: 'single' },
     { date: '04/08/2026', originalCategory: 'Mortgage (joint)', adjustedAmount: -1400, category: 'needs', rawAmount: -1400 },
     { date: '04/12/2026', originalCategory: 'Eating Out (joint)', adjustedAmount: -200, category: 'wants', rawAmount: -200 }
   ];
 
-  app.run('budgetCategories = cloneDefaultCategories(); allTransactions = __testValue;', transactions);
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    currentProfile = { name: 'Demo User', isSharedBudget: true, householdName: 'Demo Household' };
+    allTransactions = __testValue;
+  `, transactions);
 
   const jointSnapshot = app.context.buildBudgetSnapshot(2026, false, 'all');
   assert.equal(jointSnapshot.totals.income, 5600);
