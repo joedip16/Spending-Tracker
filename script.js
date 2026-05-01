@@ -3103,6 +3103,12 @@ function renderHomeDashboard() {
     const periodLabel = currentMonth === 'all' ? `${homeYear}` : `${getSelectedMonths()[0]} ${homeYear}`;
     const activeViewLabel = getCurrentBreakdownLabel(isJoeViewActive);
     const goals = getBudgetGoals();
+    const wantsTargetAmount = snapshot.totals.income * goals.wants / 100;
+    const needsTargetAmount = snapshot.totals.income * goals.needs / 100;
+    const savingsTargetAmount = snapshot.totals.income * goals.savings / 100;
+    const wantsTargetDelta = wantsTargetAmount - snapshot.totals.wants;
+    const needsTargetDelta = needsTargetAmount - snapshot.totals.needs;
+    const savingsTargetDelta = (snapshot.totals.income - snapshot.totals.expenses) - savingsTargetAmount;
     updateBudgetGoalTargets();
     document.getElementById('home-subtitle').textContent = `Snapshot for ${periodLabel}.`;
     document.getElementById('home-year-title').textContent = `${periodLabel} Snapshot`;
@@ -3112,6 +3118,15 @@ function renderHomeDashboard() {
     document.getElementById('home-wants-amount').textContent = `$${formatMoney(snapshot.avgWants)} / $${formatMoney(snapshot.avgIncome)} income`;
     document.getElementById('home-needs-amount').textContent = `$${formatMoney(snapshot.avgNeeds)} / $${formatMoney(snapshot.avgIncome)} income`;
     document.getElementById('home-savings-amount').textContent = `$${formatMoney(snapshot.avgNet)} remaining on average`;
+    document.getElementById('home-wants-remaining').textContent = wantsTargetDelta >= 0
+        ? `$${formatMoney(wantsTargetDelta)} left before target`
+        : `$${formatMoney(Math.abs(wantsTargetDelta))} over target`;
+    document.getElementById('home-needs-remaining').textContent = needsTargetDelta >= 0
+        ? `$${formatMoney(needsTargetDelta)} left before target`
+        : `$${formatMoney(Math.abs(needsTargetDelta))} over target`;
+    document.getElementById('home-savings-remaining').textContent = savingsTargetDelta >= 0
+        ? `$${formatMoney(savingsTargetDelta)} above savings target`
+        : `$${formatMoney(Math.abs(savingsTargetDelta))} needed to reach target`;
     document.getElementById('home-wants-bar').style.width = `${Math.min(snapshot.avgWantsPct, 100)}%`;
     document.getElementById('home-needs-bar').style.width = `${Math.min(snapshot.avgNeedsPct, 100)}%`;
     document.getElementById('home-savings-bar').style.width = `${Math.min(Math.max(snapshot.avgNetPercent, 0), 100)}%`;

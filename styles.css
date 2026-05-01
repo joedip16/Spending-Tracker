@@ -401,9 +401,14 @@ table,
 }
 
 .summary-amount,
+.summary-remaining,
 .summary-target {
     color: var(--muted);
     font-size: 0.95rem;
+}
+
+.summary-remaining {
+    margin-top: -2px;
 }
 
 .summary-progress,

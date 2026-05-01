@@ -368,6 +368,56 @@ test('budget calculations summarize income, needs, wants, and personal joint spl
   assert.equal(personalSnapshot.totals.wants, 100);
 });
 
+test('home summary cards show remaining room before budget targets', () => {
+  const app = loadApp();
+  const transactions = [
+    { date: '04/05/2026', originalCategory: 'Demo Paycheck', adjustedAmount: 1000, category: 'income', rawAmount: 1000, purchaseType: 'single' },
+    { date: '04/08/2026', originalCategory: 'Groceries', adjustedAmount: -400, category: 'needs', rawAmount: -400, purchaseType: 'single' },
+    { date: '04/12/2026', originalCategory: 'Eating Out', adjustedAmount: -200, category: 'wants', rawAmount: -200, purchaseType: 'single' }
+  ];
+
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    allTransactions = __testValue;
+    availableYears = [2026];
+    currentYear = 2026;
+    currentMonth = '4';
+    currentProfile = { name: 'Tester', isSharedBudget: false, householdName: '' };
+  `, transactions);
+
+  app.context.renderHomeDashboard();
+
+  assert.equal(app.run(`document.getElementById('home-wants-remaining').textContent`), '$100.00 left before target');
+  assert.equal(app.run(`document.getElementById('home-needs-remaining').textContent`), '$100.00 left before target');
+  assert.equal(app.run(`document.getElementById('home-savings-remaining').textContent`), '$200.00 above savings target');
+});
+
+test('home summary cards use total target room for all-month views', () => {
+  const app = loadApp();
+  const transactions = [
+    { date: '03/05/2026', originalCategory: 'Demo Paycheck', adjustedAmount: 1000, category: 'income', rawAmount: 1000, purchaseType: 'single' },
+    { date: '03/12/2026', originalCategory: 'Eating Out', adjustedAmount: -200, category: 'wants', rawAmount: -200, purchaseType: 'single' },
+    { date: '04/05/2026', originalCategory: 'Demo Paycheck', adjustedAmount: 1000, category: 'income', rawAmount: 1000, purchaseType: 'single' },
+    { date: '04/08/2026', originalCategory: 'Groceries', adjustedAmount: -400, category: 'needs', rawAmount: -400, purchaseType: 'single' },
+    { date: '04/12/2026', originalCategory: 'Eating Out', adjustedAmount: -200, category: 'wants', rawAmount: -200, purchaseType: 'single' }
+  ];
+
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    allTransactions = __testValue;
+    availableYears = [2026];
+    currentYear = 2026;
+    currentMonth = 'all';
+    currentProfile = { name: 'Tester', isSharedBudget: false, householdName: '' };
+  `, transactions);
+
+  app.context.renderHomeDashboard();
+
+  assert.equal(app.run(`document.getElementById('home-wants-remaining').textContent`), '$200.00 left before target');
+  assert.equal(app.run(`document.getElementById('home-needs-remaining').textContent`), '$600.00 left before target');
+  assert.equal(app.run(`document.getElementById('home-savings-remaining').textContent`), '$800.00 above savings target');
+});
+
 test('manual transaction category inference recognizes likely wants', () => {
   const app = loadApp();
   app.run(`
