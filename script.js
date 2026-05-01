@@ -3561,9 +3561,7 @@ function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -
         if (!originalCategory && amount === 0) continue;
 
         const cleanedCategory = originalCategory.replace(/\s*\(.*\)/g, '').trim();
-        const category = categorizeTransaction(cleanedCategory, originalCategory, amount);
         const accountValue = accountCol >= 0 ? String(pendingImportRows[i][accountCol] || '').toLowerCase() : '';
-        const purchaseType = /\(joint\)$/i.test(originalCategory) || accountValue.includes('joint') ? 'joint' : 'single';
         const note = noteCol >= 0 && noteCol !== descriptionCol
             ? normalizeTransactionNote(pendingImportRows[i][noteCol])
             : '';
@@ -3571,12 +3569,17 @@ function buildImportPreviewRows(dateCol, descriptionCol, amountCol, debitCol = -
             date,
             originalCategory,
             adjustedAmount: amount,
-            category,
+            category: categorizeTransaction(cleanedCategory, originalCategory, amount),
             rawAmount: amount,
             note
         };
 
         applyPendingImportCategoryChoices(transaction);
+
+        const explicitJointMarker = /\(joint\)$/i.test(originalCategory) || accountValue.includes('joint');
+        const purchaseType = explicitJointMarker
+            ? 'joint'
+            : inferPurchaseTypeForDescription(cleanedCategory, transaction.category);
 
         previewRows.push({
             ...transaction,

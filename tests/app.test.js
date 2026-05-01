@@ -198,6 +198,39 @@ test('import parsing detects Date/Category/Amount/Account CSV files', () => {
   assert.equal(previewRows[1].selected, true);
 });
 
+test('import preview applies saved category purchase type defaults', () => {
+  const app = loadApp();
+  const csv = [
+    'Date,Description,Amount',
+    '04/19/2026,Eating Out,-42.75',
+    '04/20/2026,Mortgage,-1400'
+  ].join('\n');
+
+  const rows = app.context.parseCsvRows(csv);
+  app.run(`
+    pendingImportRows = __testValue.rows;
+    pendingImportHeaders = __testValue.rows[0];
+    pendingImportHeaderRowIndex = 0;
+    importedTransactions = [];
+    manualTransactions = [];
+    allTransactions = [];
+    budgetCategories = cloneDefaultCategories();
+    budgetCategories.wants = budgetCategories.wants.map(category =>
+      category.name === 'Eating Out' ? { ...category, defaultPurchaseType: 'joint' } : category
+    );
+    budgetCategories.needs = budgetCategories.needs.map(category =>
+      category.name === 'Mortgage' ? { ...category, defaultPurchaseType: 'joint' } : category
+    );
+  `, { rows });
+
+  const mapping = app.context.getBestImportColumnDefaults(rows[0]);
+  const previewRows = app.context.buildImportPreviewRows(mapping.dateCol, mapping.descriptionCol, mapping.amountCol);
+
+  assert.equal(previewRows.length, 2);
+  assert.equal(previewRows[0].purchaseType, 'joint');
+  assert.equal(previewRows[1].purchaseType, 'joint');
+});
+
 test('unrecognized imported categories can be assigned and saved as defaults', () => {
   const app = loadApp();
   app.run(`
