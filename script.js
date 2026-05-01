@@ -1394,6 +1394,35 @@ function buildBankSyncImportRows(transactions = []) {
     return rows;
 }
 
+function getBankSyncFunctionUrl(name) {
+    const projectId = window.firebaseConfig?.projectId;
+    if (!projectId) throw new Error('Firebase project ID is missing.');
+    return `https://us-central1-${projectId}.cloudfunctions.net/${name}`;
+}
+
+async function callBankSyncEndpoint(name, payload = {}) {
+    if (!firebaseAuth?.currentUser) {
+        throw new Error('Sign in before using bank sync.');
+    }
+
+    const idToken = await firebaseAuth.currentUser.getIdToken();
+    const response = await fetch(getBankSyncFunctionUrl(name), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify(payload)
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(result.message || result.error || 'Bank sync request failed.');
+    }
+
+    return result;
+}
+
 async function connectBankAccount() {
     if (!syncUser) {
         alert('Sign in first so linked accounts stay attached to your budget.');
@@ -1417,9 +1446,8 @@ async function connectBankAccount() {
     setBankSyncStatus('Creating a secure bank-link session...');
 
     try {
-        const createLinkToken = firebaseFunctions.httpsCallable('createPlaidLinkToken');
-        const result = await createLinkToken({});
-        const linkToken = result?.data?.linkToken;
+        const result = await callBankSyncEndpoint('createPlaidLinkTokenHttp', {});
+        const linkToken = result?.linkToken;
         if (!linkToken) throw new Error('Missing link token from the bank sync service.');
 
         const handler = window.Plaid.create({
@@ -1427,8 +1455,7 @@ async function connectBankAccount() {
             onSuccess: async (publicToken, metadata) => {
                 try {
                     setBankSyncStatus('Link successful. Saving connected account...');
-                    const exchangeToken = firebaseFunctions.httpsCallable('exchangePlaidPublicToken');
-                    await exchangeToken({
+                    await callBankSyncEndpoint('exchangePlaidPublicTokenHttp', {
                         publicToken,
                         institution: metadata?.institution || null,
                         accounts: metadata?.accounts || []
@@ -1470,10 +1497,9 @@ async function pullLatestBankTransactions() {
     setBankSyncStatus('Pulling the latest transactions from linked institutions...');
 
     try {
-        const syncTransactions = firebaseFunctions.httpsCallable('syncPlaidTransactions');
-        const result = await syncTransactions({});
-        const transactions = result?.data?.transactions || [];
-        const removedCount = Number(result?.data?.removedCount || 0);
+        const result = await callBankSyncEndpoint('syncPlaidTransactionsHttp', {});
+        const transactions = result?.transactions || [];
+        const removedCount = Number(result?.removedCount || 0);
 
         if (!transactions.length) {
             setBankSyncStatus(removedCount > 0
@@ -1500,8 +1526,7 @@ async function disconnectBankConnection(itemId) {
 
     try {
         setBankSyncStatus('Disconnecting linked institution...');
-        const disconnectItem = firebaseFunctions.httpsCallable('disconnectPlaidItem');
-        await disconnectItem({ itemId });
+        await callBankSyncEndpoint('disconnectPlaidItemHttp', { itemId });
         setBankSyncStatus('Linked institution disconnected.');
     } catch (error) {
         setBankSyncStatus(`Disconnect failed: ${error.message}`);
