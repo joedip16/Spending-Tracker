@@ -1,4 +1,4 @@
-const CACHE_NAME = 'budget-tracker-v35';
+const CACHE_NAME = 'budget-tracker-v37';
 const APP_SHELL = [
   '/',
   '/index.html',

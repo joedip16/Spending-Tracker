@@ -437,9 +437,20 @@
                             <button id="pull-bank-transactions-btn" class="secondary-button">Pull Only New Transactions</button>
                             <button id="generate-sandbox-transaction-btn" class="secondary-button">Generate Sandbox Test Transaction</button>
                         </div>
+                        <div id="bank-sync-alerts" class="bank-sync-alerts"></div>
+                        <div class="bank-sync-diagnostics-card">
+                            <h4>Bank Sync Health</h4>
+                            <div id="bank-sync-diagnostics" class="bank-sync-diagnostics"></div>
+                        </div>
                         <div id="bank-connections-list" class="bank-connections-list">
                             <p class="backup-status">No linked institutions yet.</p>
                         </div>
+                    </section>
+
+                    <section class="panel settings-card support-card">
+                        <p class="panel-kicker">Support</p>
+                        <h3>Help & Contact</h3>
+                        <p id="support-contact-text" class="panel-copy">Add a support email in firebase-config.js so users know where to report sync, account, or privacy issues.</p>
                     </section>
 
                     <section class="panel settings-card legal-card">
@@ -775,9 +786,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script src="firebase-config.js?v=20260501-bank-sync-live"></script>
+    <script src="firebase-config.js?v=20260501-rollout-step6"></script>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260501-plaid-reconciliation-step4"></script>
+    <script src="script.js?v=20260501-rollout-step6"></script>
 </body>
 </html>

@@ -645,6 +645,57 @@ test('bank sync ui hides sandbox tools outside sandbox mode', () => {
   assert.match(app.run(`document.getElementById('bank-sync-helper-text').textContent`), /Connect a bank or credit card account/);
 });
 
+test('support contact renders configured support email', () => {
+  const app = loadApp();
+  app.context.window.appSupportEmail = 'support@example.com';
+  app.context.renderSupportContactInfo();
+  const html = app.run(`document.getElementById('support-contact-text').innerHTML`);
+  assert.match(html, /support@example\.com/);
+  assert.match(html, /mailto:support@example\.com/);
+});
+
+test('private beta rollout only allows allowlisted emails', () => {
+  const app = loadApp();
+  app.context.window.bankSyncRolloutStage = 'private-beta';
+  app.context.window.bankSyncAllowedEmails = ['allowed@example.com'];
+
+  assert.equal(app.context.isUserEligibleForBankSyncRollout({ email: 'allowed@example.com' }), true);
+  assert.equal(app.context.isUserEligibleForBankSyncRollout({ email: 'blocked@example.com' }), false);
+});
+
+test('bank sync diagnostics warn when production readiness items are missing', () => {
+  const app = loadApp();
+  app.run(`
+    syncUser = { uid: 'abc', email: 'test@example.com' };
+    firebaseFunctions = {};
+    window.Plaid = null;
+    window.bankSyncEnabled = true;
+    connectedBankConnections = [];
+    bankSyncEnvironment = {
+      plaidEnvironment: 'sandbox',
+      sandboxTestingEnabled: false,
+      webhookConfigured: false
+    };
+  `);
+  app.context.window.bankSyncRolloutStage = 'private-beta';
+  app.context.window.bankSyncAllowedEmails = ['other@example.com'];
+  app.context.window.location = {
+    protocol: 'file:',
+    origin: 'file://',
+    pathname: '/index.html',
+    search: '',
+    hash: ''
+  };
+
+  app.context.renderBankSyncDiagnostics();
+  const html = app.run(`document.getElementById('bank-sync-alerts').innerHTML`);
+  assert.match(html, /webhooks are not fully configured/i);
+  assert.match(html, /OAuth redirect URI/i);
+  assert.match(html, /No support email is configured yet/i);
+  assert.match(html, /still running in sandbox mode/i);
+  assert.match(html, /not on the private beta allowlist/i);
+});
+
 test('plaid oauth redirect uri uses the current hosted page without query params', () => {
   const app = loadApp();
   app.context.window.location = {

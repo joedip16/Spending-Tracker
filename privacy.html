@@ -23,6 +23,7 @@
                 <li>Budget profile settings, such as name, single or joint setup, and household label.</li>
                 <li>Transactions you add or import, including dates, descriptions, amounts, categories, and purchase type.</li>
                 <li>Budget goals, category settings, recurring transaction rules, skipped recurring occurrences, theme preference, and dashboard preferences.</li>
+                <li>If you connect a bank through Plaid, linked institution metadata such as institution name, account display names, account masks, webhook status, and bank sync timestamps. Plaid access tokens are stored server-side only and are not exposed to the browser.</li>
             </ul>
 
             <h2>How Information Is Stored</h2>
@@ -50,8 +51,17 @@
             <p>This policy may be updated as the app changes. The effective date above will be updated when material changes are made.</p>
 
             <h2>Contact</h2>
-            <p>For privacy questions or deletion help, contact the app developer at the support email listed wherever the app is distributed.</p>
+            <p id="legal-support-text">For privacy questions or deletion help, contact the app developer at the support email listed in the app settings or wherever the app is distributed.</p>
         </section>
     </main>
+    <script src="firebase-config.js?v=20260501-rollout-step6"></script>
+    <script>
+        (function () {
+            const target = document.getElementById('legal-support-text');
+            const email = String(window.appSupportEmail || '').trim();
+            if (!target || !email) return;
+            target.innerHTML = 'For privacy questions or deletion help, contact <a href="mailto:' + email + '">' + email + '</a>.';
+        })();
+    </script>
 </body>
 </html>

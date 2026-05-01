@@ -1261,6 +1261,120 @@ function setBankSyncStatus(message) {
     if (status) status.textContent = message;
 }
 
+function getSupportEmail() {
+    return String(window.appSupportEmail || '').trim();
+}
+
+function getBankSyncRolloutStage() {
+    const stage = String(window.bankSyncRolloutStage || 'sandbox').trim().toLowerCase();
+    return ['sandbox', 'private-beta', 'live'].includes(stage) ? stage : 'sandbox';
+}
+
+function getBankSyncAllowedEmails() {
+    return Array.isArray(window.bankSyncAllowedEmails)
+        ? window.bankSyncAllowedEmails.map(email => String(email || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+}
+
+function isUserEligibleForBankSyncRollout(user = syncUser) {
+    const stage = getBankSyncRolloutStage();
+    if (stage === 'sandbox' || stage === 'live') return true;
+    const email = String(user?.email || '').trim().toLowerCase();
+    return Boolean(email) && getBankSyncAllowedEmails().includes(email);
+}
+
+function getBankSyncRolloutLabel() {
+    const stage = getBankSyncRolloutStage();
+    if (stage === 'private-beta') return 'Private beta';
+    if (stage === 'live') return 'Live rollout';
+    return 'Sandbox';
+}
+
+function renderSupportContactInfo() {
+    const supportText = document.getElementById('support-contact-text');
+    if (!supportText) return;
+
+    const email = getSupportEmail();
+    if (email) {
+        supportText.innerHTML = `For account, sync, Plaid linking, or privacy questions, contact <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>.`;
+    } else {
+        supportText.textContent = 'Add a support email in firebase-config.js so users know where to report sync, account, or privacy issues.';
+    }
+}
+
+function renderBankSyncDiagnostics() {
+    const diagnostics = document.getElementById('bank-sync-diagnostics');
+    const alerts = document.getElementById('bank-sync-alerts');
+    if (!diagnostics || !alerts) return;
+
+    const supportConfigured = Boolean(getSupportEmail());
+    const redirectUri = getPlaidOAuthRedirectUri();
+    const oauthRedirectReady = Boolean(redirectUri);
+    const plaidLoaded = Boolean(window.Plaid);
+    const appCheckReady = isAppCheckConfigured();
+    const rolloutStage = getBankSyncRolloutStage();
+    const rolloutEligible = isUserEligibleForBankSyncRollout();
+    const diagnosticsItems = [
+        {
+            label: 'Rollout stage',
+            value: getBankSyncRolloutLabel(),
+            ok: true
+        },
+        {
+            label: 'Plaid environment',
+            value: bankSyncEnvironment.plaidEnvironment || 'unknown',
+            ok: Boolean(bankSyncEnvironment.plaidEnvironment)
+        },
+        {
+            label: 'Webhook receiver',
+            value: bankSyncEnvironment.webhookConfigured ? 'Configured' : 'Missing',
+            ok: Boolean(bankSyncEnvironment.webhookConfigured)
+        },
+        {
+            label: 'OAuth redirect',
+            value: oauthRedirectReady ? redirectUri : 'Unavailable on this page',
+            ok: oauthRedirectReady
+        },
+        {
+            label: 'Plaid Link SDK',
+            value: plaidLoaded ? 'Loaded' : 'Not loaded',
+            ok: plaidLoaded
+        },
+        {
+            label: 'Firebase App Check',
+            value: appCheckReady ? 'Enabled' : 'Not configured',
+            ok: appCheckReady
+        },
+        {
+            label: 'Support contact',
+            value: supportConfigured ? getSupportEmail() : 'Missing',
+            ok: supportConfigured
+        },
+        {
+            label: 'Current account access',
+            value: rolloutEligible ? 'Allowed' : 'Not allowlisted',
+            ok: rolloutEligible || rolloutStage !== 'private-beta'
+        }
+    ];
+
+    diagnostics.innerHTML = diagnosticsItems.map(item => `
+        <div class="bank-sync-diagnostic ${item.ok ? 'ok' : 'warn'}">
+            <strong>${escapeHtml(item.label)}</strong>
+            <small>${escapeHtml(item.value)}</small>
+        </div>
+    `).join('');
+
+    const warnings = [];
+    if (!bankSyncEnvironment.webhookConfigured) warnings.push('Plaid transaction webhooks are not fully configured yet. Real account updates may not appear automatically.');
+    if (!oauthRedirectReady) warnings.push('This page does not have a valid OAuth redirect URI. Open the hosted app over https before connecting banks that require OAuth.');
+    if (!appCheckReady) warnings.push('Firebase App Check is not fully configured. That increases abuse risk for the live sync endpoints.');
+    if (!supportConfigured) warnings.push('No support email is configured yet. Update firebase-config.js before broad release so users know where to get help.');
+    if (rolloutStage !== 'sandbox' && bankSyncEnvironment.plaidEnvironment === 'sandbox') warnings.push('Rollout stage is set beyond sandbox, but Plaid is still running in sandbox mode. Real accounts cannot be connected yet.');
+    if (rolloutStage === 'private-beta' && !rolloutEligible) warnings.push('This signed-in email is not on the private beta allowlist for real-account bank sync.');
+
+    alerts.innerHTML = warnings.map(message => `<div class="bank-sync-alert">${escapeHtml(message)}</div>`).join('');
+}
+
 function setButtonLoading(button, isLoading, loadingText = 'Working...') {
     if (!button) return;
     if (isLoading) {
@@ -1315,6 +1429,7 @@ function updateSyncUi(user = syncUser) {
     authForm.style.display = user ? 'none' : 'grid';
     userPanel.style.display = user ? 'block' : 'none';
     userEmail.textContent = user?.email || '';
+    renderSupportContactInfo();
     updateBankSyncUi(user);
 }
 
@@ -1327,20 +1442,24 @@ function updateBankSyncUi(user = syncUser) {
     if (!connectButton || !pullButton || !sandboxButton || !kicker || !helperText) return;
 
     const configured = Boolean(window.bankSyncEnabled && firebaseFunctions && window.Plaid);
+    const rolloutEligible = isUserEligibleForBankSyncRollout(user);
     const sandboxEnabled = bankSyncEnvironment.sandboxTestingEnabled !== false;
-    connectButton.disabled = !user || !configured;
-    pullButton.disabled = !user || !configured || connectedBankConnections.length === 0;
+    connectButton.disabled = !user || !configured || !rolloutEligible;
+    pullButton.disabled = !user || !configured || connectedBankConnections.length === 0 || !rolloutEligible;
     sandboxButton.disabled = !user || !configured || connectedBankConnections.length === 0 || !sandboxEnabled;
     sandboxButton.style.display = sandboxEnabled ? '' : 'none';
     kicker.textContent = sandboxEnabled ? 'Bank Sync Beta' : 'Bank Sync';
     helperText.textContent = sandboxEnabled
         ? 'For Plaid sandbox testing, you can generate a fresh test transaction here and then review it like any other synced import.'
         : 'Connect a bank or credit card account, then review new transactions before importing them into your budget.';
+    renderBankSyncDiagnostics();
 
     if (!user) {
         setBankSyncStatus('Sign in to connect your bank and card accounts across devices.');
     } else if (!window.bankSyncEnabled) {
         setBankSyncStatus('Bank sync is turned off. Finish Plaid + Firebase Functions setup, then set bankSyncEnabled to true.');
+    } else if (!rolloutEligible) {
+        setBankSyncStatus('Bank sync is currently in a private beta. This account is not allowlisted for real-account linking yet.');
     } else if (!firebaseFunctions) {
         setBankSyncStatus('Firebase Functions is not available yet. Deploy the bank-sync functions to enable account linking.');
     } else if (!window.Plaid) {
@@ -1771,6 +1890,10 @@ async function callBankSyncEndpoint(name, payload = {}) {
 async function connectBankAccount() {
     if (!syncUser) {
         alert('Sign in first so linked accounts stay attached to your budget.');
+        return;
+    }
+    if (!isUserEligibleForBankSyncRollout()) {
+        alert('Bank sync is currently limited to allowlisted private beta accounts.');
         return;
     }
     if (!window.bankSyncEnabled) {

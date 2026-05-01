@@ -953,6 +953,63 @@ table,
     margin-bottom: 4px;
 }
 
+.bank-sync-alerts {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.bank-sync-alert {
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(223, 91, 75, 0.2);
+    background: rgba(223, 91, 75, 0.08);
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.bank-sync-diagnostics-card {
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-alt);
+}
+
+.bank-sync-diagnostics-card h4 {
+    margin-bottom: 12px;
+}
+
+.bank-sync-diagnostics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.bank-sync-diagnostic {
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--surface-strong);
+}
+
+.bank-sync-diagnostic strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.bank-sync-diagnostic small {
+    color: var(--muted);
+}
+
+.bank-sync-diagnostic.ok {
+    border-color: rgba(59, 179, 129, 0.28);
+}
+
+.bank-sync-diagnostic.warn {
+    border-color: rgba(247, 180, 68, 0.32);
+}
+
 .bank-connection-meta {
     color: var(--muted);
     font-size: 0.92rem;
@@ -2024,7 +2081,8 @@ body.dark-mode .nav-btn.active {
     .recurring-row,
     .transaction-search-panel,
     .import-column-controls,
-    .cashflow-row {
+    .cashflow-row,
+    .bank-sync-diagnostics {
         grid-template-columns: 1fr;
     }
 

@@ -32,7 +32,7 @@
             <p>Do not misuse the app, attempt to access another user's data, disrupt the service, reverse engineer hosted services, or use the app for unlawful activity.</p>
 
             <h2>Third-Party Services</h2>
-            <p>The app uses Firebase services for authentication, cloud storage, and hosting. Your use of those cloud-backed features also depends on Firebase and Google service availability and policies.</p>
+            <p>The app uses Firebase services for authentication, cloud storage, and hosting. If you connect a bank or card account, the app also uses Plaid to help retrieve transaction data. Your use of those cloud-backed features depends on the availability and policies of those third-party services.</p>
 
             <h2>Data Deletion</h2>
             <p>You may delete your account and synced budget data from Settings under Account Sync. Deletion is intended to be permanent, so export a backup first if you want to keep a copy.</p>
@@ -47,8 +47,17 @@
             <p>These terms may be updated as the app changes. Continuing to use the app after changes means you accept the updated terms.</p>
 
             <h2>Contact</h2>
-            <p>For questions about these terms, contact the app developer at the support email listed wherever the app is distributed.</p>
+            <p id="legal-support-text">For questions about these terms, contact the app developer at the support email listed in the app settings or wherever the app is distributed.</p>
         </section>
     </main>
+    <script src="firebase-config.js?v=20260501-rollout-step6"></script>
+    <script>
+        (function () {
+            const target = document.getElementById('legal-support-text');
+            const email = String(window.appSupportEmail || '').trim();
+            if (!target || !email) return;
+            target.innerHTML = 'For questions about these terms, contact <a href="mailto:' + email + '">' + email + '</a>.';
+        })();
+    </script>
 </body>
 </html>
