@@ -1331,7 +1331,7 @@ function updateBankSyncUi(user = syncUser) {
     } else if (connectedBankConnections.length === 0) {
         setBankSyncStatus('Ready to connect a bank or credit card account.');
     } else {
-        setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. Pull only new transactions anytime.`);
+        setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. Pull only new transactions anytime, or generate a sandbox test transaction first.`);
     }
 }
 
@@ -1524,6 +1524,15 @@ function getBankSyncPullFeedback(result = {}, pulledAt = new Date().toLocaleStri
     };
 }
 
+function getSandboxGenerationFeedback(result = {}) {
+    const generatedCount = Number(result.generatedCount || 0);
+    if (generatedCount <= 0) {
+        return 'No sandbox test transactions were generated.';
+    }
+
+    return `Generated ${generatedCount} sandbox test transaction${generatedCount === 1 ? '' : 's'}. Pulling only new transactions now...`;
+}
+
 function getBankSyncFunctionUrl(name) {
     const projectId = window.firebaseConfig?.projectId;
     if (!projectId) throw new Error('Firebase project ID is missing.');
@@ -1643,6 +1652,28 @@ async function pullLatestBankTransactions() {
     } catch (error) {
         setBankSyncStatus(`Bank sync pull failed: ${error.message}`);
         alert(`Bank sync pull failed: ${error.message}`);
+    } finally {
+        setButtonLoading(button, false);
+    }
+}
+
+async function generateSandboxTestTransaction() {
+    if (!syncUser || !firebaseFunctions) {
+        alert('Sign in and finish bank sync setup first.');
+        return;
+    }
+
+    const button = document.getElementById('generate-sandbox-transaction-btn');
+    setButtonLoading(button, true, 'Generating...');
+    setBankSyncStatus('Generating a fresh Plaid sandbox test transaction...');
+
+    try {
+        const result = await callBankSyncEndpoint('createSandboxPlaidTransactionHttp', {});
+        setBankSyncStatus(getSandboxGenerationFeedback(result));
+        await pullLatestBankTransactions();
+    } catch (error) {
+        setBankSyncStatus(`Sandbox test transaction failed: ${error.message}`);
+        alert(`Sandbox test transaction failed: ${error.message}`);
     } finally {
         setButtonLoading(button, false);
     }
@@ -4986,6 +5017,7 @@ function attachNavigationListeners() {
     document.getElementById('delete-account-data-btn').addEventListener('click', deleteAccountAndData);
     document.getElementById('connect-bank-btn').addEventListener('click', connectBankAccount);
     document.getElementById('pull-bank-transactions-btn').addEventListener('click', pullLatestBankTransactions);
+    document.getElementById('generate-sandbox-transaction-btn').addEventListener('click', generateSandboxTestTransaction);
     document.getElementById('load-demo-mode-btn').addEventListener('click', applyDemoMode);
     document.getElementById('clear-demo-mode-btn').addEventListener('click', clearDemoMode);
     document.getElementById('sync-password').addEventListener('keydown', event => {

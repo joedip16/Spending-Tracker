@@ -62,6 +62,10 @@ function getPlaidClient() {
   return new PlaidApi(configuration);
 }
 
+function isSandboxPlaidEnvironment() {
+  return (process.env.PLAID_ENV || 'sandbox').toLowerCase() === 'sandbox';
+}
+
 function getPlaidErrorMessage(error, fallback = 'Plaid request failed.') {
   return error?.response?.data?.error_message ||
     error?.response?.data?.display_message ||
@@ -164,6 +168,34 @@ async function syncPlaidTransactionsForUser(userId, options = {}) {
     removedCount,
     modifiedCount,
     reviewMode: includeModifiedInReview ? 'all-changes' : 'new-only'
+  };
+}
+
+function getSandboxTransactionDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function pickSandboxAccount(accounts = []) {
+  if (!Array.isArray(accounts) || accounts.length === 0) return null;
+  return accounts.find(account => ['depository', 'credit'].includes(account?.type)) || accounts[0];
+}
+
+function buildSandboxTestTransaction(item, account) {
+  const amountOptions = [12.48, 18.73, 26.15, 41.92];
+  const merchantOptions = ['Sandbox Coffee', 'Sandbox Groceries', 'Sandbox Gas', 'Sandbox Lunch'];
+  const now = new Date();
+  const amount = amountOptions[now.getUTCMinutes() % amountOptions.length];
+  const merchant = merchantOptions[now.getUTCSeconds() % merchantOptions.length];
+  const accountLabel = account?.name || account?.mask || 'Account';
+  const timestamp = now.toISOString().slice(11, 16).replace(':', '');
+  const today = getSandboxTransactionDateString();
+
+  return {
+    amount,
+    date_posted: today,
+    date_transacted: today,
+    description: `${merchant} ${accountLabel} ${timestamp}`,
+    iso_currency_code: 'USD'
   };
 }
 
@@ -356,6 +388,69 @@ exports.syncPlaidTransactionsHttp = onRequest({ cors: true }, async (req, res) =
   } catch (error) {
     console.error('syncPlaidTransactionsHttp failed', error?.response?.data || error);
     sendHttpError(res, error, getPlaidErrorMessage(error, 'Unable to sync Plaid transactions.'));
+  }
+});
+
+exports.createSandboxPlaidTransactionHttp = onRequest({ cors: true }, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method-not-allowed' });
+  try {
+    if (!isSandboxPlaidEnvironment()) {
+      throw new HttpsError('failed-precondition', 'Sandbox test transactions are only available while Plaid is using the sandbox environment.');
+    }
+
+    const userId = await requireHttpAuth(req);
+    const client = getPlaidClient();
+    const privateItemsSnapshot = await db.collection('plaidPrivateItems').where('userId', '==', userId).get();
+
+    if (privateItemsSnapshot.empty) {
+      throw new HttpsError('failed-precondition', 'No linked bank accounts were found for this user.');
+    }
+
+    const createdTransactions = [];
+    const failures = [];
+
+    for (const doc of privateItemsSnapshot.docs) {
+      const item = doc.data();
+      const account = pickSandboxAccount(item.accounts || []);
+      if (!account?.id) {
+        failures.push(`${item.institutionName || 'Connected Institution'} has no eligible account for sandbox testing.`);
+        continue;
+      }
+
+      const transaction = buildSandboxTestTransaction(item, account);
+      try {
+        await client.sandboxTransactionsCreate({
+          access_token: item.accessToken,
+          transactions: [transaction]
+        });
+        createdTransactions.push({
+          institutionName: item.institutionName || 'Connected Institution',
+          accountName: account.name || account.mask || 'Linked Account',
+          description: transaction.description,
+          amount: transaction.amount,
+          date: transaction.date_posted
+        });
+      } catch (error) {
+        failures.push(getPlaidErrorMessage(error, `Unable to generate a sandbox test transaction for ${item.institutionName || 'the linked institution'}.`));
+      }
+    }
+
+    if (createdTransactions.length === 0) {
+      throw new HttpsError(
+        'failed-precondition',
+        failures[0] || 'No sandbox test transactions could be created. Reconnect using Plaid sandbox user_transactions_dynamic and try again.'
+      );
+    }
+
+    res.json({
+      generatedCount: createdTransactions.length,
+      createdTransactions,
+      failures,
+      message: `Generated ${createdTransactions.length} sandbox test transaction${createdTransactions.length === 1 ? '' : 's'}.`
+    });
+  } catch (error) {
+    console.error('createSandboxPlaidTransactionHttp failed', error?.response?.data || error);
+    sendHttpError(res, error, getPlaidErrorMessage(error, 'Unable to generate a Plaid sandbox test transaction.'));
   }
 });
 

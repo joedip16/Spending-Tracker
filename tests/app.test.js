@@ -561,6 +561,19 @@ test('bank sync pull feedback describes new-only pulls and background updates', 
   assert.match(withNewFeedback.statusText, /1 pending, posted, or removed bank update was handled in the background\./);
 });
 
+test('sandbox generation feedback describes follow-up pull', () => {
+  const app = loadApp();
+
+  assert.equal(
+    app.context.getSandboxGenerationFeedback({ generatedCount: 1 }),
+    'Generated 1 sandbox test transaction. Pulling only new transactions now...'
+  );
+  assert.equal(
+    app.context.getSandboxGenerationFeedback({ generatedCount: 3 }),
+    'Generated 3 sandbox test transactions. Pulling only new transactions now...'
+  );
+});
+
 test('manual transaction category inference recognizes likely wants', () => {
   const app = loadApp();
   app.run(`
