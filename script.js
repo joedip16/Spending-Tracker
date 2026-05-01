@@ -432,6 +432,46 @@ function getCategoryDefaultPurchaseType(type, name) {
     return match?.defaultPurchaseType === 'joint' ? 'joint' : 'single';
 }
 
+function syncCategoryManagerDraftFromBudgetCategories() {
+    if (!categoryManagerDraft) return;
+    categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+}
+
+function updateCategoryDefaultPurchaseType(type, description, purchaseType) {
+    if (!['income', 'needs', 'wants'].includes(type)) return false;
+    if (!budgetCategories) loadBudgetCategories();
+
+    const baseDescription = getBaseDescription(description);
+    if (!baseDescription) return false;
+
+    const categoryList = getCategoryList(type);
+    const matchIndex = categoryList.findIndex(category => categoryMatchesText(category, baseDescription));
+    if (matchIndex === -1) return false;
+
+    const normalizedPurchaseType = purchaseType === 'joint' ? 'joint' : 'single';
+    if (categoryList[matchIndex].defaultPurchaseType === normalizedPurchaseType) return false;
+
+    categoryList[matchIndex] = {
+        ...categoryList[matchIndex],
+        defaultPurchaseType: normalizedPurchaseType
+    };
+    saveBudgetCategories();
+    syncCategoryManagerDraftFromBudgetCategories();
+    return true;
+}
+
+function applyLastUsedPurchaseTypeDefaults(transactions = []) {
+    let updated = false;
+    transactions.forEach(txn => {
+        const purchaseType = txn?.purchaseType || getTransactionPurchaseType(txn);
+        updated = updateCategoryDefaultPurchaseType(txn?.category, txn?.originalCategory, purchaseType) || updated;
+    });
+    if (updated && currentPage === 'settings') {
+        renderCategoryManager();
+    }
+    return updated;
+}
+
 function formatCategoryType(type) {
     if (type === 'income') return 'Income / Savings';
     return type.charAt(0).toUpperCase() + type.slice(1);
@@ -4618,6 +4658,13 @@ function confirmImportPreview() {
                 ...(txn.externalTransactionId ? { externalTransactionId: txn.externalTransactionId } : {})
             };
         });
+    const selectedPurchaseTypeDefaults = pendingImportTransactions
+        .filter(txn => txn.selected)
+        .map(txn => ({
+            category: txn.category,
+            originalCategory: getBaseDescription(txn.originalCategory),
+            purchaseType: txn.purchaseType
+        }));
 
     if (selectedTransactions.length === 0) {
         alert('Please select at least one transaction to import.');
@@ -4645,6 +4692,7 @@ function confirmImportPreview() {
         importedTransactions = [...importedTransactions, ...selectedTransactions];
     }
 
+    applyLastUsedPurchaseTypeDefaults(selectedPurchaseTypeDefaults);
     saveAllTransactions();
     updateTransactions();
     updateBreakdownButtonLabels();
@@ -4826,6 +4874,11 @@ document.getElementById('save-edit').addEventListener('click', () => {
         if (manualIdx !== -1) manualTransactions[manualIdx] = updatedTxn;
     }
 
+    applyLastUsedPurchaseTypeDefaults([{
+        category,
+        originalCategory: finalDescription,
+        purchaseType
+    }]);
     saveAllTransactions();
     updateTransactions();
     document.getElementById('edit-modal').style.display = 'none';
@@ -5232,6 +5285,11 @@ document.getElementById('save-manual').addEventListener('click', () => {
         manualTransactions.unshift(newTxn);
     }
 
+    applyLastUsedPurchaseTypeDefaults([{
+        category,
+        originalCategory: finalDescription,
+        purchaseType
+    }]);
     saveAllTransactions();
     updateTransactions();
     if (makeRecurring) applyRecurringTransactions(false);

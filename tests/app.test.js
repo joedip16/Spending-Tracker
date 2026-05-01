@@ -773,6 +773,31 @@ test('manual transaction category inference recognizes likely wants', () => {
   assert.equal(app.context.inferPurchaseTypeForDescription('Eating Out', 'wants'), 'joint');
 });
 
+test('last used purchase type becomes the new category default', () => {
+  const app = loadApp();
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
+    currentPage = 'home';
+  `);
+
+  const updated = app.context.applyLastUsedPurchaseTypeDefaults([{
+    category: 'wants',
+    originalCategory: 'Eating Out',
+    purchaseType: 'single'
+  }]);
+
+  assert.equal(updated, true);
+  assert.equal(app.context.inferPurchaseTypeForDescription('Eating Out', 'wants'), 'single');
+
+  app.context.applyLastUsedPurchaseTypeDefaults([{
+    category: 'wants',
+    originalCategory: 'Eating Out',
+    purchaseType: 'joint'
+  }]);
+  assert.equal(app.context.inferPurchaseTypeForDescription('Eating Out', 'wants'), 'joint');
+});
+
 test('recurring transactions generate due manual transactions once', () => {
   const app = loadApp();
   const recurring = [{
