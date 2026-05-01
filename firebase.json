@@ -6,6 +6,7 @@
       ".firebaserc",
       "firestore.rules",
       "firebase_tools",
+      "functions/**",
       "*.md",
       ".git/**",
       "**/.*",
@@ -22,6 +23,9 @@
         ]
       }
     ]
+  },
+  "functions": {
+    "source": "functions"
   },
   "firestore": {
     "rules": "firestore.rules"

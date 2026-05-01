@@ -31,8 +31,11 @@ let firebaseApp = null;
 let firebaseAppCheck = null;
 let firebaseAuth = null;
 let firebaseDb = null;
+let firebaseFunctions = null;
 let syncUser = null;
 let syncUnsubscribe = null;
+let bankConnectionsUnsubscribe = null;
+let connectedBankConnections = [];
 let isApplyingCloudState = false;
 let syncDebounceTimer = null;
 let lastCloudStateJson = '';
@@ -1245,6 +1248,11 @@ function setSyncStatus(message) {
     if (status) status.textContent = message;
 }
 
+function setBankSyncStatus(message) {
+    const status = document.getElementById('bank-sync-status-text');
+    if (status) status.textContent = message;
+}
+
 function setButtonLoading(button, isLoading, loadingText = 'Working...') {
     if (!button) return;
     if (isLoading) {
@@ -1299,6 +1307,206 @@ function updateSyncUi(user = syncUser) {
     authForm.style.display = user ? 'none' : 'grid';
     userPanel.style.display = user ? 'block' : 'none';
     userEmail.textContent = user?.email || '';
+    updateBankSyncUi(user);
+}
+
+function updateBankSyncUi(user = syncUser) {
+    const connectButton = document.getElementById('connect-bank-btn');
+    const pullButton = document.getElementById('pull-bank-transactions-btn');
+    if (!connectButton || !pullButton) return;
+
+    const configured = Boolean(window.bankSyncEnabled && firebaseFunctions && window.Plaid);
+    connectButton.disabled = !user || !configured;
+    pullButton.disabled = !user || !configured || connectedBankConnections.length === 0;
+
+    if (!user) {
+        setBankSyncStatus('Sign in to connect your bank and card accounts across devices.');
+    } else if (!window.bankSyncEnabled) {
+        setBankSyncStatus('Bank sync is turned off. Finish Plaid + Firebase Functions setup, then set bankSyncEnabled to true.');
+    } else if (!firebaseFunctions) {
+        setBankSyncStatus('Firebase Functions is not available yet. Deploy the bank-sync functions to enable account linking.');
+    } else if (!window.Plaid) {
+        setBankSyncStatus('Plaid Link did not load. Check your connection and try again.');
+    } else if (connectedBankConnections.length === 0) {
+        setBankSyncStatus('Ready to connect a bank or credit card account.');
+    } else {
+        setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. Pull the latest transactions anytime.`);
+    }
+}
+
+function getBankConnectionsCollectionRef() {
+    if (!firebaseDb || !syncUser) return null;
+    return firebaseDb.collection('users').doc(syncUser.uid).collection('bankConnections');
+}
+
+function renderBankConnections() {
+    const container = document.getElementById('bank-connections-list');
+    if (!container) return;
+
+    if (connectedBankConnections.length === 0) {
+        container.innerHTML = '<p class="backup-status">No linked institutions yet.</p>';
+        updateBankSyncUi(syncUser);
+        return;
+    }
+
+    container.innerHTML = connectedBankConnections.map(connection => `
+        <div class="bank-connection-card">
+            <strong>${escapeHtml(connection.institutionName || 'Connected Institution')}</strong>
+            <div class="bank-connection-meta">
+                ${escapeHtml((connection.accounts || []).map(account => account.name || account.mask || 'Account').join(' • ') || 'Accounts linked')}
+                <br>
+                Last sync: ${escapeHtml(connection.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleString() : 'Not yet synced')}
+            </div>
+            <div class="settings-actions">
+                <button class="secondary-button disconnect-bank-btn" data-item-id="${escapeHtml(connection.itemId || '')}">Disconnect</button>
+            </div>
+        </div>
+    `).join('');
+
+    container.querySelectorAll('.disconnect-bank-btn').forEach(button => {
+        button.addEventListener('click', () => disconnectBankConnection(button.dataset.itemId));
+    });
+    updateBankSyncUi(syncUser);
+}
+
+function subscribeToBankConnections(user) {
+    if (bankConnectionsUnsubscribe) bankConnectionsUnsubscribe();
+    const collectionRef = firebaseDb.collection('users').doc(user.uid).collection('bankConnections');
+    bankConnectionsUnsubscribe = collectionRef.onSnapshot(snapshot => {
+        connectedBankConnections = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderBankConnections();
+    }, error => setBankSyncStatus(`Bank connection list failed: ${error.message}`));
+}
+
+function buildBankSyncImportRows(transactions = []) {
+    const rows = [['Date', 'Description', 'Amount', 'Account', 'Note']];
+    transactions.forEach(txn => {
+        const amount = Number(txn.amount);
+        if (!Number.isFinite(amount)) return;
+        rows.push([
+            txn.date || '',
+            txn.name || txn.merchantName || 'Bank Transaction',
+            -amount,
+            [txn.institutionName, txn.accountName].filter(Boolean).join(' • '),
+            normalizeTransactionNote(txn.note || [txn.pending ? 'Pending' : '', txn.accountName].filter(Boolean).join(' • '))
+        ]);
+    });
+    return rows;
+}
+
+async function connectBankAccount() {
+    if (!syncUser) {
+        alert('Sign in first so linked accounts stay attached to your budget.');
+        return;
+    }
+    if (!window.bankSyncEnabled) {
+        alert('Bank sync is not turned on yet. Finish setup first, then set bankSyncEnabled to true.');
+        return;
+    }
+    if (!firebaseFunctions) {
+        alert('Firebase Functions is not available yet. Deploy the bank-sync functions first.');
+        return;
+    }
+    if (!window.Plaid) {
+        alert('Plaid Link did not load. Refresh and try again.');
+        return;
+    }
+
+    const button = document.getElementById('connect-bank-btn');
+    setButtonLoading(button, true, 'Preparing Link...');
+    setBankSyncStatus('Creating a secure bank-link session...');
+
+    try {
+        const createLinkToken = firebaseFunctions.httpsCallable('createPlaidLinkToken');
+        const result = await createLinkToken({});
+        const linkToken = result?.data?.linkToken;
+        if (!linkToken) throw new Error('Missing link token from the bank sync service.');
+
+        const handler = window.Plaid.create({
+            token: linkToken,
+            onSuccess: async (publicToken, metadata) => {
+                try {
+                    setBankSyncStatus('Link successful. Saving connected account...');
+                    const exchangeToken = firebaseFunctions.httpsCallable('exchangePlaidPublicToken');
+                    await exchangeToken({
+                        publicToken,
+                        institution: metadata?.institution || null,
+                        accounts: metadata?.accounts || []
+                    });
+                    setBankSyncStatus('Account linked. You can pull transactions now.');
+                } catch (error) {
+                    setBankSyncStatus(`Saving linked account failed: ${error.message}`);
+                    alert(`Saving linked account failed: ${error.message}`);
+                } finally {
+                    updateBankSyncUi(syncUser);
+                }
+            },
+            onExit: error => {
+                if (error) {
+                    setBankSyncStatus(`Bank linking exited: ${error.display_message || error.error_message || error.error_code}`);
+                } else {
+                    setBankSyncStatus('Bank linking was closed before an account was connected.');
+                }
+            }
+        });
+
+        handler.open();
+    } catch (error) {
+        setBankSyncStatus(`Bank link setup failed: ${error.message}`);
+        alert(`Bank link setup failed: ${error.message}`);
+    } finally {
+        setButtonLoading(button, false);
+    }
+}
+
+async function pullLatestBankTransactions() {
+    if (!syncUser || !firebaseFunctions) {
+        alert('Sign in and finish bank sync setup first.');
+        return;
+    }
+
+    const button = document.getElementById('pull-bank-transactions-btn');
+    setButtonLoading(button, true, 'Pulling...');
+    setBankSyncStatus('Pulling the latest transactions from linked institutions...');
+
+    try {
+        const syncTransactions = firebaseFunctions.httpsCallable('syncPlaidTransactions');
+        const result = await syncTransactions({});
+        const transactions = result?.data?.transactions || [];
+        const removedCount = Number(result?.data?.removedCount || 0);
+
+        if (!transactions.length) {
+            setBankSyncStatus(removedCount > 0
+                ? `No new transactions to review. ${removedCount} pending/posted updates were detected in the background.`
+                : 'No new linked-account transactions were returned this time.');
+            alert('No new bank transactions were returned this time.');
+            return;
+        }
+
+        openImportPreview(buildBankSyncImportRows(transactions), `Connected accounts sync (${transactions.length} transaction${transactions.length === 1 ? '' : 's'})`);
+        switchPage('transactions');
+        setBankSyncStatus(`Pulled ${transactions.length} transaction${transactions.length === 1 ? '' : 's'} for review before import.`);
+    } catch (error) {
+        setBankSyncStatus(`Bank sync pull failed: ${error.message}`);
+        alert(`Bank sync pull failed: ${error.message}`);
+    } finally {
+        setButtonLoading(button, false);
+    }
+}
+
+async function disconnectBankConnection(itemId) {
+    if (!itemId || !firebaseFunctions) return;
+    if (!confirm('Disconnect this linked institution? Future pulls will stop for this connection.')) return;
+
+    try {
+        setBankSyncStatus('Disconnecting linked institution...');
+        const disconnectItem = firebaseFunctions.httpsCallable('disconnectPlaidItem');
+        await disconnectItem({ itemId });
+        setBankSyncStatus('Linked institution disconnected.');
+    } catch (error) {
+        setBankSyncStatus(`Disconnect failed: ${error.message}`);
+        alert(`Disconnect failed: ${error.message}`);
+    }
 }
 
 function getSyncDocRef() {
@@ -1518,6 +1726,7 @@ function initFirebaseSync() {
         }
         firebaseAuth = firebase.auth();
         firebaseDb = firebase.firestore();
+        firebaseFunctions = firebase.functions ? firebase.functions() : null;
         firebaseAuth.onAuthStateChanged(user => {
             syncUser = user;
             lastCloudStateJson = '';
@@ -1532,9 +1741,19 @@ function initFirebaseSync() {
                 }
                 setSyncStatus(`Signed in as ${user.email}. Syncing...`);
                 subscribeToCloudState(user);
+                if (window.bankSyncEnabled && firebaseFunctions) {
+                    subscribeToBankConnections(user);
+                } else {
+                    connectedBankConnections = [];
+                    renderBankConnections();
+                }
             } else {
                 if (syncUnsubscribe) syncUnsubscribe();
                 syncUnsubscribe = null;
+                if (bankConnectionsUnsubscribe) bankConnectionsUnsubscribe();
+                bankConnectionsUnsubscribe = null;
+                connectedBankConnections = [];
+                renderBankConnections();
                 setSyncStatus(isDemoModeActive()
                     ? 'Demo mode is active locally. Sync is paused until demo data is cleared.'
                     : 'Sign in to sync this budget across devices.');
@@ -1622,6 +1841,7 @@ function clearLocalAppData() {
         hasCalculatedBreakdown = false;
         currentProfile = getDefaultProfile();
         currentSnapshotTab = 'overview';
+        connectedBankConnections = [];
         budgetCategories = cloneDefaultCategories();
         budgetGoals = { ...DEFAULT_BUDGET_GOALS };
         categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
@@ -4587,6 +4807,8 @@ function attachNavigationListeners() {
     document.getElementById('restore-cloud-backup-btn').addEventListener('click', restoreLatestCloudBackup);
     document.getElementById('sync-sign-out-btn').addEventListener('click', signOutOfSync);
     document.getElementById('delete-account-data-btn').addEventListener('click', deleteAccountAndData);
+    document.getElementById('connect-bank-btn').addEventListener('click', connectBankAccount);
+    document.getElementById('pull-bank-transactions-btn').addEventListener('click', pullLatestBankTransactions);
     document.getElementById('load-demo-mode-btn').addEventListener('click', applyDemoMode);
     document.getElementById('clear-demo-mode-btn').addEventListener('click', clearDemoMode);
     document.getElementById('sync-password').addEventListener('keydown', event => {

@@ -897,7 +897,8 @@ table,
 .category-manager-card,
 .recurring-manager-card,
 .backup-card,
-.demo-card {
+.demo-card,
+.bank-sync-card {
     grid-column: 1 / -1;
 }
 
@@ -932,6 +933,30 @@ table,
     border: 1px solid var(--line);
     border-radius: 18px;
     background: var(--surface-alt);
+}
+
+.bank-connections-list {
+    margin-top: 18px;
+    display: grid;
+    gap: 12px;
+}
+
+.bank-connection-card {
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-alt);
+}
+
+.bank-connection-card strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.bank-connection-meta {
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin-bottom: 12px;
 }
 
 .danger-zone {

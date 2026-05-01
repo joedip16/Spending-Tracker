@@ -426,6 +426,19 @@
                         </div>
                     </section>
 
+                    <section class="panel settings-card bank-sync-card">
+                        <p class="panel-kicker">Bank Sync Beta</p>
+                        <h3>Linked Accounts</h3>
+                        <p id="bank-sync-status-text" class="panel-copy">Bank sync is not configured yet.</p>
+                        <div class="settings-actions">
+                            <button id="connect-bank-btn">Connect Bank or Card</button>
+                            <button id="pull-bank-transactions-btn" class="secondary-button">Pull Latest Transactions</button>
+                        </div>
+                        <div id="bank-connections-list" class="bank-connections-list">
+                            <p class="backup-status">No linked institutions yet.</p>
+                        </div>
+                    </section>
+
                     <section class="panel settings-card legal-card">
                         <p class="panel-kicker">Privacy</p>
                         <h3>Policies & Data Controls</h3>
@@ -758,8 +771,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=20260422-appcheck"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
+    <script src="firebase-config.js?v=20260501-bank-sync-live"></script>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260501-home-target-totals"></script>
+    <script src="script.js?v=20260501-bank-sync-live"></script>
 </body>
 </html>

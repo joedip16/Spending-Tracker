@@ -418,6 +418,33 @@ test('home summary cards use total target room for all-month views', () => {
   assert.equal(app.run(`document.getElementById('home-savings-remaining').textContent`), '$800.00 above savings target');
 });
 
+test('bank sync rows convert outflows to app import amounts', () => {
+  const app = loadApp();
+  const rows = app.context.buildBankSyncImportRows([
+    {
+      date: '2026-04-20',
+      name: 'Coffee Shop',
+      amount: 14.5,
+      institutionName: 'Test Bank',
+      accountName: 'Visa',
+      pending: false
+    },
+    {
+      date: '2026-04-21',
+      name: 'Payroll Deposit',
+      amount: -1200,
+      institutionName: 'Test Bank',
+      accountName: 'Checking',
+      pending: false
+    }
+  ]);
+
+  assert.equal(JSON.stringify(rows[0]), JSON.stringify(['Date', 'Description', 'Amount', 'Account', 'Note']));
+  assert.equal(rows[1][2], -14.5);
+  assert.equal(rows[2][2], 1200);
+  assert.equal(rows[1][3], 'Test Bank • Visa');
+});
+
 test('manual transaction category inference recognizes likely wants', () => {
   const app = loadApp();
   app.run(`

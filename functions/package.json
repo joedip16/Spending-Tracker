@@ -1,0 +1,14 @@
+{
+  "name": "budget-tracker-functions",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.5.1",
+    "firebase-admin": "^12.1.1",
+    "firebase-functions": "^5.0.1",
+    "plaid": "^42.2.0"
+  }
+}
