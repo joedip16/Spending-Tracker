@@ -518,6 +518,24 @@ test('transaction source label identifies bank synced transactions', () => {
   assert.equal(app.context.getTransactionSourceLabel(bankTxn), 'Bank Sync');
 });
 
+test('bank connection cards show last pulled from bank wording', () => {
+  const app = loadApp();
+  app.run(`
+    connectedBankConnections = [{
+      institutionName: 'Test Bank',
+      accounts: [{ name: 'Checking' }],
+      lastSyncAt: null,
+      itemId: 'item_123'
+    }];
+    syncUser = { uid: 'abc', email: 'test@example.com' };
+  `);
+
+  app.context.renderBankConnections();
+  const html = app.run(`document.getElementById('bank-connections-list').innerHTML`);
+  assert.ok(html.includes('Last pulled from bank:'));
+  assert.ok(html.includes('Not yet pulled'));
+});
+
 test('manual transaction category inference recognizes likely wants', () => {
   const app = loadApp();
   app.run(`

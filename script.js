@@ -1356,7 +1356,7 @@ function renderBankConnections() {
             <div class="bank-connection-meta">
                 ${escapeHtml((connection.accounts || []).map(account => account.name || account.mask || 'Account').join(' • ') || 'Accounts linked')}
                 <br>
-                Last sync: ${escapeHtml(connection.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleString() : 'Not yet synced')}
+                Last pulled from bank: ${escapeHtml(connection.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleString() : 'Not yet pulled')}
             </div>
             <div class="settings-actions">
                 <button class="secondary-button disconnect-bank-btn" data-item-id="${escapeHtml(connection.itemId || '')}">Disconnect</button>
@@ -1601,18 +1601,19 @@ async function pullLatestBankTransactions() {
         const result = await callBankSyncEndpoint('syncPlaidTransactionsHttp', {});
         const transactions = result?.transactions || [];
         const removedCount = Number(result?.removedCount || 0);
+        const pulledAt = new Date().toLocaleString();
 
         if (!transactions.length) {
             setBankSyncStatus(removedCount > 0
-                ? `No new transactions to review. ${removedCount} pending/posted updates were detected in the background.`
-                : 'No new linked-account transactions were returned this time.');
+                ? `Last pulled from bank: ${pulledAt}. No new transactions to review. ${removedCount} pending/posted updates were detected in the background.`
+                : `Last pulled from bank: ${pulledAt}. No new linked-account transactions were returned this time.`);
             alert('No new bank transactions were returned this time.');
             return;
         }
 
         openBankSyncImportPreview(transactions, `Connected accounts sync (${transactions.length} transaction${transactions.length === 1 ? '' : 's'})`);
         switchPage('transactions');
-        setBankSyncStatus(`Pulled ${transactions.length} transaction${transactions.length === 1 ? '' : 's'} for review before import.`);
+        setBankSyncStatus(`Last pulled from bank: ${pulledAt}. Pulled ${transactions.length} transaction${transactions.length === 1 ? '' : 's'} for review before import.`);
     } catch (error) {
         setBankSyncStatus(`Bank sync pull failed: ${error.message}`);
         alert(`Bank sync pull failed: ${error.message}`);
