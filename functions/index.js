@@ -92,6 +92,81 @@ function privateConnectionRef(itemId) {
   return db.collection('plaidPrivateItems').doc(itemId);
 }
 
+function mapPlaidTransactionForReview(txn, item, accountLookup) {
+  const account = accountLookup.get(txn.account_id) || {};
+  return {
+    id: txn.transaction_id,
+    externalTransactionId: txn.transaction_id,
+    date: txn.date,
+    amount: txn.amount,
+    pending: Boolean(txn.pending),
+    name: txn.merchant_name || txn.name || 'Bank Transaction',
+    merchantName: txn.merchant_name || '',
+    accountName: account.name || account.mask || 'Linked Account',
+    institutionName: item.institutionName || 'Connected Institution',
+    note: `${item.institutionName || 'Connected Institution'}${account.name ? ` • ${account.name}` : ''}`
+  };
+}
+
+async function syncPlaidTransactionsForUser(userId, options = {}) {
+  const client = getPlaidClient();
+  const privateItemsSnapshot = await db.collection('plaidPrivateItems').where('userId', '==', userId).get();
+
+  if (privateItemsSnapshot.empty) {
+    throw new HttpsError('failed-precondition', 'No linked bank accounts were found for this user.');
+  }
+
+  const includeModifiedInReview = Boolean(options.includeModifiedInReview);
+  const transactions = [];
+  let removedCount = 0;
+  let modifiedCount = 0;
+
+  for (const doc of privateItemsSnapshot.docs) {
+    const item = doc.data();
+    const accountLookup = new Map((item.accounts || []).map(account => [account.id, account]));
+    let cursor = item.cursor || null;
+    let hasMore = true;
+    const added = [];
+    const modified = [];
+
+    while (hasMore) {
+      const response = await client.transactionsSync({
+        access_token: item.accessToken,
+        cursor
+      });
+
+      cursor = response.data.next_cursor;
+      hasMore = response.data.has_more;
+      added.push(...response.data.added);
+      modified.push(...response.data.modified);
+      removedCount += response.data.removed.length;
+    }
+
+    modifiedCount += modified.length;
+    const reviewableTransactions = includeModifiedInReview ? [...added, ...modified] : added;
+    reviewableTransactions.forEach(txn => {
+      transactions.push(mapPlaidTransactionForReview(txn, item, accountLookup));
+    });
+
+    const now = new Date().toISOString();
+    await doc.ref.set({
+      cursor,
+      updatedAt: now
+    }, { merge: true });
+    await publicConnectionRef(userId, item.itemId).set({
+      lastSyncAt: now,
+      status: 'connected'
+    }, { merge: true });
+  }
+
+  return {
+    transactions,
+    removedCount,
+    modifiedCount,
+    reviewMode: includeModifiedInReview ? 'all-changes' : 'new-only'
+  };
+}
+
 exports.createPlaidLinkToken = onCall(async request => {
   const userId = requireAuth(request);
   const client = getPlaidClient();
@@ -170,68 +245,7 @@ exports.exchangePlaidPublicToken = onCall(async request => {
 
 exports.syncPlaidTransactions = onCall(async request => {
   const userId = requireAuth(request);
-  const client = getPlaidClient();
-  const privateItemsSnapshot = await db.collection('plaidPrivateItems').where('userId', '==', userId).get();
-
-  if (privateItemsSnapshot.empty) {
-    throw new HttpsError('failed-precondition', 'No linked bank accounts were found for this user.');
-  }
-
-  const transactions = [];
-  let removedCount = 0;
-
-  for (const doc of privateItemsSnapshot.docs) {
-    const item = doc.data();
-    const accountLookup = new Map((item.accounts || []).map(account => [account.id, account]));
-    let cursor = item.cursor || null;
-    let hasMore = true;
-    const added = [];
-    const modified = [];
-
-    while (hasMore) {
-      const response = await client.transactionsSync({
-        access_token: item.accessToken,
-        cursor
-      });
-
-      cursor = response.data.next_cursor;
-      hasMore = response.data.has_more;
-      added.push(...response.data.added);
-      modified.push(...response.data.modified);
-      removedCount += response.data.removed.length;
-    }
-
-    [...added, ...modified].forEach(txn => {
-      const account = accountLookup.get(txn.account_id) || {};
-      transactions.push({
-        id: txn.transaction_id,
-        externalTransactionId: txn.transaction_id,
-        date: txn.date,
-        amount: txn.amount,
-        pending: Boolean(txn.pending),
-        name: txn.merchant_name || txn.name || 'Bank Transaction',
-        merchantName: txn.merchant_name || '',
-        accountName: account.name || account.mask || 'Linked Account',
-        institutionName: item.institutionName || 'Connected Institution',
-        note: `${item.institutionName || 'Connected Institution'}${account.name ? ` • ${account.name}` : ''}`
-      });
-    });
-
-    const now = new Date().toISOString();
-    await doc.ref.set({
-      cursor,
-      updatedAt: now
-    }, { merge: true });
-    await publicConnectionRef(userId, item.itemId).set({
-      lastSyncAt: now,
-      status: 'connected'
-    }, { merge: true });
-  }
-
-  return {
-    transactions,
-    removedCount
-  };
+  return syncPlaidTransactionsForUser(userId, { includeModifiedInReview: false });
 });
 
 exports.disconnectPlaidItem = onCall(async request => {
@@ -337,59 +351,8 @@ exports.syncPlaidTransactionsHttp = onRequest({ cors: true }, async (req, res) =
   if (req.method !== 'POST') return res.status(405).json({ error: 'method-not-allowed' });
   try {
     const userId = await requireHttpAuth(req);
-    const client = getPlaidClient();
-    const privateItemsSnapshot = await db.collection('plaidPrivateItems').where('userId', '==', userId).get();
-
-    if (privateItemsSnapshot.empty) {
-      throw new HttpsError('failed-precondition', 'No linked bank accounts were found for this user.');
-    }
-
-    const transactions = [];
-    let removedCount = 0;
-
-    for (const doc of privateItemsSnapshot.docs) {
-      const item = doc.data();
-      const accountLookup = new Map((item.accounts || []).map(account => [account.id, account]));
-      let cursor = item.cursor || null;
-      let hasMore = true;
-      const added = [];
-      const modified = [];
-
-      while (hasMore) {
-        const response = await client.transactionsSync({
-          access_token: item.accessToken,
-          cursor
-        });
-
-        cursor = response.data.next_cursor;
-        hasMore = response.data.has_more;
-        added.push(...response.data.added);
-        modified.push(...response.data.modified);
-        removedCount += response.data.removed.length;
-      }
-
-      [...added, ...modified].forEach(txn => {
-        const account = accountLookup.get(txn.account_id) || {};
-        transactions.push({
-          id: txn.transaction_id,
-          externalTransactionId: txn.transaction_id,
-          date: txn.date,
-          amount: txn.amount,
-          pending: Boolean(txn.pending),
-          name: txn.merchant_name || txn.name || 'Bank Transaction',
-          merchantName: txn.merchant_name || '',
-          accountName: account.name || account.mask || 'Linked Account',
-          institutionName: item.institutionName || 'Connected Institution',
-          note: `${item.institutionName || 'Connected Institution'}${account.name ? ` • ${account.name}` : ''}`
-        });
-      });
-
-      const now = new Date().toISOString();
-      await doc.ref.set({ cursor, updatedAt: now }, { merge: true });
-      await publicConnectionRef(userId, item.itemId).set({ lastSyncAt: now, status: 'connected' }, { merge: true });
-    }
-
-    res.json({ transactions, removedCount });
+    const result = await syncPlaidTransactionsForUser(userId, { includeModifiedInReview: false });
+    res.json(result);
   } catch (error) {
     console.error('syncPlaidTransactionsHttp failed', error?.response?.data || error);
     sendHttpError(res, error, getPlaidErrorMessage(error, 'Unable to sync Plaid transactions.'));

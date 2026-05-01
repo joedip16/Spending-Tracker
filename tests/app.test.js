@@ -536,6 +536,31 @@ test('bank connection cards show last pulled from bank wording', () => {
   assert.ok(html.includes('Not yet pulled'));
 });
 
+test('bank sync pull feedback describes new-only pulls and background updates', () => {
+  const app = loadApp();
+
+  const noNewFeedback = app.context.getBankSyncPullFeedback({
+    transactions: [],
+    modifiedCount: 2,
+    removedCount: 1
+  }, '5/1/2026, 2:30:00 PM');
+
+  assert.equal(noNewFeedback.hasTransactions, false);
+  assert.match(noNewFeedback.statusText, /No new transactions to review\./);
+  assert.match(noNewFeedback.statusText, /3 pending, posted, or removed bank updates were handled in the background\./);
+
+  const withNewFeedback = app.context.getBankSyncPullFeedback({
+    transactions: [{ id: 'txn_1' }, { id: 'txn_2' }],
+    modifiedCount: 1,
+    removedCount: 0
+  }, '5/1/2026, 2:31:00 PM');
+
+  assert.equal(withNewFeedback.hasTransactions, true);
+  assert.equal(withNewFeedback.previewLabel, 'Connected accounts new transactions (2 transactions)');
+  assert.match(withNewFeedback.statusText, /Pulled 2 new transactions for review before import\./);
+  assert.match(withNewFeedback.statusText, /1 pending, posted, or removed bank update was handled in the background\./);
+});
+
 test('manual transaction category inference recognizes likely wants', () => {
   const app = loadApp();
   app.run(`

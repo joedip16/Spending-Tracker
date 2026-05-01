@@ -1331,7 +1331,7 @@ function updateBankSyncUi(user = syncUser) {
     } else if (connectedBankConnections.length === 0) {
         setBankSyncStatus('Ready to connect a bank or credit card account.');
     } else {
-        setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. Pull the latest transactions anytime.`);
+        setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. Pull only new transactions anytime.`);
     }
 }
 
@@ -1495,6 +1495,35 @@ function openBankSyncImportPreview(transactions = [], label = 'Connected account
     document.getElementById('import-preview-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function getBankSyncPullFeedback(result = {}, pulledAt = new Date().toLocaleString()) {
+    const transactions = Array.isArray(result.transactions) ? result.transactions : [];
+    const removedCount = Number(result.removedCount || 0);
+    const modifiedCount = Number(result.modifiedCount || 0);
+    const backgroundUpdateCount = removedCount + modifiedCount;
+
+    if (!transactions.length) {
+        const backgroundSuffix = backgroundUpdateCount > 0
+            ? ` ${backgroundUpdateCount} pending, posted, or removed bank update${backgroundUpdateCount === 1 ? ' was' : 's were'} handled in the background.`
+            : '';
+        return {
+            hasTransactions: false,
+            previewLabel: 'Connected accounts new transactions',
+            statusText: `Last pulled from bank: ${pulledAt}. No new transactions to review.${backgroundSuffix}`,
+            alertText: 'No new bank transactions were returned this time.'
+        };
+    }
+
+    const backgroundSuffix = backgroundUpdateCount > 0
+        ? ` ${backgroundUpdateCount} pending, posted, or removed bank update${backgroundUpdateCount === 1 ? ' was' : 's were'} handled in the background.`
+        : '';
+    return {
+        hasTransactions: true,
+        previewLabel: `Connected accounts new transactions (${transactions.length} transaction${transactions.length === 1 ? '' : 's'})`,
+        statusText: `Last pulled from bank: ${pulledAt}. Pulled ${transactions.length} new transaction${transactions.length === 1 ? '' : 's'} for review before import.${backgroundSuffix}`,
+        alertText: ''
+    };
+}
+
 function getBankSyncFunctionUrl(name) {
     const projectId = window.firebaseConfig?.projectId;
     if (!projectId) throw new Error('Firebase project ID is missing.');
@@ -1599,21 +1628,18 @@ async function pullLatestBankTransactions() {
 
     try {
         const result = await callBankSyncEndpoint('syncPlaidTransactionsHttp', {});
-        const transactions = result?.transactions || [];
-        const removedCount = Number(result?.removedCount || 0);
         const pulledAt = new Date().toLocaleString();
+        const feedback = getBankSyncPullFeedback(result, pulledAt);
 
-        if (!transactions.length) {
-            setBankSyncStatus(removedCount > 0
-                ? `Last pulled from bank: ${pulledAt}. No new transactions to review. ${removedCount} pending/posted updates were detected in the background.`
-                : `Last pulled from bank: ${pulledAt}. No new linked-account transactions were returned this time.`);
-            alert('No new bank transactions were returned this time.');
+        if (!feedback.hasTransactions) {
+            setBankSyncStatus(feedback.statusText);
+            alert(feedback.alertText);
             return;
         }
 
-        openBankSyncImportPreview(transactions, `Connected accounts sync (${transactions.length} transaction${transactions.length === 1 ? '' : 's'})`);
+        openBankSyncImportPreview(result.transactions || [], feedback.previewLabel);
         switchPage('transactions');
-        setBankSyncStatus(`Last pulled from bank: ${pulledAt}. Pulled ${transactions.length} transaction${transactions.length === 1 ? '' : 's'} for review before import.`);
+        setBankSyncStatus(feedback.statusText);
     } catch (error) {
         setBankSyncStatus(`Bank sync pull failed: ${error.message}`);
         alert(`Bank sync pull failed: ${error.message}`);
