@@ -2701,11 +2701,13 @@ function transactionMatchesSearchFilters(txn) {
     const isImported = importedTransactions.includes(txn);
     const isManual = manualTransactions.includes(txn);
     const isRecurring = Boolean(txn.recurringId);
+    const isBankSync = isBankSyncTransaction(txn);
 
     if (filters.search && !description.includes(filters.search) && !note.includes(filters.search)) return false;
     if (filters.category !== 'all' && txn.category !== filters.category) return false;
     if (filters.purchaseType !== 'all' && purchaseType !== filters.purchaseType) return false;
     if (filters.source === 'imported' && !isImported) return false;
+    if (filters.source === 'bank-sync' && !isBankSync) return false;
     if (filters.source === 'manual' && !isManual) return false;
     if (filters.source === 'recurring' && !isRecurring) return false;
     if (filters.minAmount !== null && !Number.isNaN(filters.minAmount) && absoluteAmount < filters.minAmount) return false;
@@ -2718,6 +2720,18 @@ function getFilteredTransactions() {
     return allTransactions
         .filter(transactionMatchesCurrentPeriod)
         .filter(transactionMatchesSearchFilters);
+}
+
+function isBankSyncTransaction(txn) {
+    return Boolean(txn?.externalTransactionId);
+}
+
+function getTransactionSourceLabel(txn) {
+    if (isBankSyncTransaction(txn)) return 'Bank Sync';
+    if (txn?.recurringId) return 'Recurring';
+    if (manualTransactions.includes(txn)) return 'Manual';
+    if (importedTransactions.includes(txn)) return 'Imported';
+    return 'Transaction';
 }
 
 function clearTransactionFilters() {
@@ -4269,10 +4283,11 @@ function displayTransactions() {
         const i = allTransactions.indexOf(txn);
         const amountDisplay = getAmountDisplay(txn.adjustedAmount);
         const note = normalizeTransactionNote(txn.note);
+        const sourceLabel = getTransactionSourceLabel(txn);
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${txn.date}</td>
-            <td>${txn.originalCategory}</td>
+            <td>${escapeHtml(txn.originalCategory)}<div class="transaction-source-badge">${escapeHtml(sourceLabel)}</div></td>
             <td>${note ? escapeHtml(note) : '<span class="muted-note">—</span>'}</td>
             <td class="${amountDisplay.className}">${amountDisplay.text}</td>
             <td>${txn.category.charAt(0).toUpperCase() + txn.category.slice(1)}</td>

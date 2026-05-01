@@ -503,6 +503,21 @@ test('bank sync preview transactions carry external ids and mark repeat pulls as
   assert.equal(previewRows[0].selected, false);
 });
 
+test('transaction source label identifies bank synced transactions', () => {
+  const app = loadApp();
+  const bankTxn = {
+    date: '04/20/2026',
+    originalCategory: 'Coffee Shop',
+    adjustedAmount: -14.5,
+    category: 'wants',
+    rawAmount: -14.5,
+    externalTransactionId: 'plaid_txn_123'
+  };
+
+  app.run('importedTransactions = [__testValue]; manualTransactions = [];', bankTxn);
+  assert.equal(app.context.getTransactionSourceLabel(bankTxn), 'Bank Sync');
+});
+
 test('manual transaction category inference recognizes likely wants', () => {
   const app = loadApp();
   app.run(`

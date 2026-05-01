@@ -1699,6 +1699,21 @@ table,
     font-weight: 600;
 }
 
+.transaction-source-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid rgba(47, 111, 237, 0.22);
+    background: rgba(47, 111, 237, 0.10);
+    color: var(--blue-deep);
+}
+
 .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
