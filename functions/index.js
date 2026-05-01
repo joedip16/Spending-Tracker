@@ -205,6 +205,7 @@ exports.syncPlaidTransactions = onCall(async request => {
       const account = accountLookup.get(txn.account_id) || {};
       transactions.push({
         id: txn.transaction_id,
+        externalTransactionId: txn.transaction_id,
         date: txn.date,
         amount: txn.amount,
         pending: Boolean(txn.pending),
@@ -371,6 +372,7 @@ exports.syncPlaidTransactionsHttp = onRequest({ cors: true }, async (req, res) =
         const account = accountLookup.get(txn.account_id) || {};
         transactions.push({
           id: txn.transaction_id,
+          externalTransactionId: txn.transaction_id,
           date: txn.date,
           amount: txn.amount,
           pending: Boolean(txn.pending),

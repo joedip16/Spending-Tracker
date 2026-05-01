@@ -1018,10 +1018,10 @@ function buildBackupCsv(payload) {
         ['preferences', data.darkMode ? 'true' : 'false', data.currentSnapshotTab || 'overview'],
         ['budgetGoals', 'needs', 'wants', 'savings'],
         ['budgetGoals', data.budgetGoals.needs, data.budgetGoals.wants, data.budgetGoals.savings],
-        ['importedTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note'],
-        ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '']),
-        ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note'],
-        ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '']),
+        ['importedTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note', 'externalTransactionId'],
+        ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '', txn.externalTransactionId || '']),
+        ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note', 'externalTransactionId'],
+        ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '', txn.externalTransactionId || '']),
         ['budgetCategory', 'type', 'name', 'keywords', 'monthlyGoal', 'defaultPurchaseType'],
         ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || '', category.defaultPurchaseType || 'single'])),
         ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate'],
@@ -1061,6 +1061,7 @@ function parseBackupTransaction(row) {
         category: row[4] || 'uncategorized',
         rawAmount: parseFloat(row[5]) || parseFloat(row[3]) || 0,
         note: row[8] || '',
+        ...(row[9] ? { externalTransactionId: row[9] } : {}),
         ...(row[6] ? { recurringId: row[6] } : {}),
         ...(row[7] ? { recurringOccurrence: row[7] } : {})
     };
@@ -1394,6 +1395,106 @@ function buildBankSyncImportRows(transactions = []) {
     return rows;
 }
 
+function buildBankSyncPreviewTransactions(transactions = []) {
+    return transactions
+        .map(txn => {
+            const amount = Number(txn.amount);
+            if (!Number.isFinite(amount)) return null;
+
+            const originalCategory = String(txn.name || txn.merchantName || 'Bank Transaction').trim();
+            const adjustedAmount = -amount;
+            const category = categorizeTransaction(originalCategory, originalCategory, adjustedAmount);
+            const note = normalizeTransactionNote(txn.note || [txn.pending ? 'Pending' : '', txn.accountName].filter(Boolean).join(' • '));
+            const transaction = {
+                date: normalizeImportedDate(txn.date) || String(txn.date || '').trim(),
+                originalCategory,
+                adjustedAmount,
+                category,
+                rawAmount: adjustedAmount,
+                note,
+                externalTransactionId: String(txn.externalTransactionId || txn.id || '').trim()
+            };
+
+            const purchaseType = inferPurchaseTypeForDescription(originalCategory, transaction.category);
+            return {
+                ...transaction,
+                purchaseType,
+                duplicate: isDuplicateImport(transaction),
+                selected: !isDuplicateImport(transaction),
+                sourceRow: null
+            };
+        })
+        .filter(Boolean);
+}
+
+function openBankSyncImportPreview(transactions = [], label = 'Connected accounts sync') {
+    if (!transactions.length) throw new Error('No linked-account transactions found.');
+
+    pendingImportRows = [];
+    pendingImportHeaders = [];
+    pendingImportFileName = label;
+    pendingImportHeaderRowIndex = 0;
+    pendingImportCategoryChoices = {};
+    pendingImportTransactions = buildBankSyncPreviewTransactions(transactions);
+
+    const tbody = document.querySelector('#import-preview-table tbody');
+    updateImportPreviewSummary();
+    renderUnrecognizedImportCategories();
+
+    if (!tbody) return;
+    if (pendingImportTransactions.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No valid linked-account transactions were returned.</td></tr>';
+    } else {
+        tbody.innerHTML = pendingImportTransactions.map((txn, index) => `
+            <tr class="${txn.duplicate ? 'duplicate-row' : ''}">
+                <td><input type="checkbox" class="preview-include" data-index="${index}" ${txn.selected ? 'checked' : ''}></td>
+                <td>
+                    ${txn.duplicate
+                        ? '<span class="duplicate-pill">Duplicate - unchecked by default</span>'
+                        : '<span class="ready-pill">Ready to import</span>'}
+                </td>
+                <td>${txn.date}</td>
+                <td>${escapeHtml(getBaseDescription(txn.originalCategory))}</td>
+                <td>${getAmountDisplay(txn.adjustedAmount).text}</td>
+                <td>
+                    <select class="preview-category import-preview-select" data-index="${index}">
+                        <option value="income" ${txn.category === 'income' ? 'selected' : ''}>Income / Savings</option>
+                        <option value="needs" ${txn.category === 'needs' ? 'selected' : ''}>Needs</option>
+                        <option value="wants" ${txn.category === 'wants' ? 'selected' : ''}>Wants</option>
+                        <option value="uncategorized" ${txn.category === 'uncategorized' ? 'selected' : ''}>Uncategorized</option>
+                    </select>
+                </td>
+                <td>
+                    <select class="preview-type import-preview-select" data-index="${index}">
+                        <option value="single" ${txn.purchaseType === 'single' ? 'selected' : ''}>Single</option>
+                        <option value="joint" ${txn.purchaseType === 'joint' ? 'selected' : ''}>Joint</option>
+                    </select>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    tbody.querySelectorAll('.preview-include').forEach(input => {
+        input.addEventListener('change', () => {
+            pendingImportTransactions[parseInt(input.dataset.index, 10)].selected = input.checked;
+            updateImportPreviewSummary();
+        });
+    });
+    tbody.querySelectorAll('.preview-category').forEach(select => {
+        select.addEventListener('change', () => {
+            pendingImportTransactions[parseInt(select.dataset.index, 10)].category = select.value;
+        });
+    });
+    tbody.querySelectorAll('.preview-type').forEach(select => {
+        select.addEventListener('change', () => {
+            pendingImportTransactions[parseInt(select.dataset.index, 10)].purchaseType = select.value;
+        });
+    });
+
+    document.getElementById('import-preview-section').style.display = 'block';
+    document.getElementById('import-preview-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function getBankSyncFunctionUrl(name) {
     const projectId = window.firebaseConfig?.projectId;
     if (!projectId) throw new Error('Firebase project ID is missing.');
@@ -1509,7 +1610,7 @@ async function pullLatestBankTransactions() {
             return;
         }
 
-        openImportPreview(buildBankSyncImportRows(transactions), `Connected accounts sync (${transactions.length} transaction${transactions.length === 1 ? '' : 's'})`);
+        openBankSyncImportPreview(transactions, `Connected accounts sync (${transactions.length} transaction${transactions.length === 1 ? '' : 's'})`);
         switchPage('transactions');
         setBankSyncStatus(`Pulled ${transactions.length} transaction${transactions.length === 1 ? '' : 's'} for review before import.`);
     } catch (error) {
@@ -3486,6 +3587,9 @@ function normalizeImportedDate(rawDate) {
 }
 
 function transactionKey(txn) {
+    if (txn?.externalTransactionId) {
+        return `external:${String(txn.externalTransactionId).trim()}`;
+    }
     return [
         String(txn.date || '').trim(),
         getBaseDescription(txn.originalCategory).toLowerCase(),
@@ -3969,6 +4073,11 @@ function updateImportPreviewSummary() {
     const summary = document.getElementById('import-preview-summary');
     if (!summary) return;
 
+    if (pendingImportRows.length === 0 && pendingImportTransactions.length > 0) {
+        summary.textContent = `${pendingImportFileName}: ${pendingImportTransactions.length} linked-account transaction${pendingImportTransactions.length === 1 ? '' : 's'}, ${duplicateCount} duplicate${duplicateCount === 1 ? '' : 's'} found, ${skippedDuplicateCount} currently skipped, ${selectedCount} selected, ${unrecognizedCount} new categor${unrecognizedCount === 1 ? 'y' : 'ies'} to review.`;
+        return;
+    }
+
     if (!isValidImportMapping(getImportColumnSelection())) {
         summary.textContent = `${pendingImportFileName}: We could not confidently detect every column. Pick Date, Description, and Amount above, then click Refresh Preview.`;
         return;
@@ -4073,7 +4182,8 @@ function confirmImportPreview() {
                 adjustedAmount: txn.adjustedAmount,
                 category: txn.category,
                 rawAmount: txn.rawAmount,
-                note: txn.note || ''
+                note: txn.note || '',
+                ...(txn.externalTransactionId ? { externalTransactionId: txn.externalTransactionId } : {})
             };
         });
 

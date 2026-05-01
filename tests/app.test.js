@@ -287,6 +287,32 @@ test('duplicate handling can find and overwrite identical transactions', () => {
   assert.equal(app.run('importedTransactions.length'), 1);
 });
 
+test('duplicate handling prefers external transaction ids when present', () => {
+  const app = loadApp();
+  const original = {
+    date: '04/19/2026',
+    originalCategory: 'Coffee Shop',
+    adjustedAmount: -14.5,
+    category: 'wants',
+    rawAmount: -14.5,
+    externalTransactionId: 'plaid_txn_123'
+  };
+
+  app.run('importedTransactions = [__testValue]; manualTransactions = []; allTransactions = importedTransactions.slice();', original);
+
+  const duplicate = app.context.findDuplicateTransaction({
+    date: '04/22/2026',
+    originalCategory: 'Totally Different Name',
+    adjustedAmount: -999,
+    category: 'needs',
+    rawAmount: -999,
+    externalTransactionId: 'plaid_txn_123'
+  });
+
+  assert.equal(duplicate.collection, 'imported');
+  assert.equal(duplicate.index, 0);
+});
+
 test('changing purchase type can update matching transactions in bulk', () => {
   const app = loadApp();
   const transactions = [
@@ -443,6 +469,38 @@ test('bank sync rows convert outflows to app import amounts', () => {
   assert.equal(rows[1][2], -14.5);
   assert.equal(rows[2][2], 1200);
   assert.equal(rows[1][3], 'Test Bank • Visa');
+});
+
+test('bank sync preview transactions carry external ids and mark repeat pulls as duplicates', () => {
+  const app = loadApp();
+  app.run(`
+    importedTransactions = [{
+      date: '04/20/2026',
+      originalCategory: 'Coffee Shop',
+      adjustedAmount: -14.5,
+      category: 'wants',
+      rawAmount: -14.5,
+      externalTransactionId: 'plaid_txn_123'
+    }];
+    manualTransactions = [];
+    allTransactions = importedTransactions.slice();
+  `);
+
+  const previewRows = app.context.buildBankSyncPreviewTransactions([{
+    id: 'plaid_txn_123',
+    externalTransactionId: 'plaid_txn_123',
+    date: '2026-04-25',
+    name: 'Coffee Shop Updated',
+    amount: 14.5,
+    institutionName: 'Test Bank',
+    accountName: 'Visa',
+    pending: false
+  }]);
+
+  assert.equal(previewRows.length, 1);
+  assert.equal(previewRows[0].externalTransactionId, 'plaid_txn_123');
+  assert.equal(previewRows[0].duplicate, true);
+  assert.equal(previewRows[0].selected, false);
 });
 
 test('manual transaction category inference recognizes likely wants', () => {
