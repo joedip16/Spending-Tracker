@@ -428,10 +428,10 @@
                     </section>
 
                     <section class="panel settings-card bank-sync-card">
-                        <p class="panel-kicker">Bank Sync Beta</p>
+                        <p id="bank-sync-kicker" class="panel-kicker">Bank Sync</p>
                         <h3>Linked Accounts</h3>
                         <p id="bank-sync-status-text" class="panel-copy">Bank sync is not configured yet.</p>
-                        <p class="panel-copy">For Plaid sandbox testing, you can generate a fresh test transaction here and then review it like any other synced import.</p>
+                        <p id="bank-sync-helper-text" class="panel-copy">Connect a bank or credit card account, then review new transactions before importing them into your budget.</p>
                         <div class="settings-actions">
                             <button id="connect-bank-btn">Connect Bank or Card</button>
                             <button id="pull-bank-transactions-btn" class="secondary-button">Pull Only New Transactions</button>
@@ -778,6 +778,6 @@
     <script src="firebase-config.js?v=20260501-bank-sync-live"></script>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260501-bank-sandbox-generate"></script>
+    <script src="script.js?v=20260501-plaid-reconciliation-step4"></script>
 </body>
 </html>

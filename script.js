@@ -36,6 +36,12 @@ let syncUser = null;
 let syncUnsubscribe = null;
 let bankConnectionsUnsubscribe = null;
 let connectedBankConnections = [];
+let bankSyncEnvironment = {
+    plaidEnvironment: 'sandbox',
+    sandboxTestingEnabled: true,
+    webhookConfigured: false
+};
+let plaidOauthResumeAttempted = false;
 let isApplyingCloudState = false;
 let syncDebounceTimer = null;
 let lastCloudStateJson = '';
@@ -120,6 +126,7 @@ const DEFAULT_BUDGET_CATEGORIES = {
 };
 
 const DEMO_MODE_STORAGE_KEY = 'demoModeActive';
+const PLAID_PENDING_LINK_TOKEN_KEY = 'plaidPendingLinkToken';
 
 const DEMO_PROFILE = {
     name: 'Demo User',
@@ -1314,11 +1321,21 @@ function updateSyncUi(user = syncUser) {
 function updateBankSyncUi(user = syncUser) {
     const connectButton = document.getElementById('connect-bank-btn');
     const pullButton = document.getElementById('pull-bank-transactions-btn');
-    if (!connectButton || !pullButton) return;
+    const sandboxButton = document.getElementById('generate-sandbox-transaction-btn');
+    const kicker = document.getElementById('bank-sync-kicker');
+    const helperText = document.getElementById('bank-sync-helper-text');
+    if (!connectButton || !pullButton || !sandboxButton || !kicker || !helperText) return;
 
     const configured = Boolean(window.bankSyncEnabled && firebaseFunctions && window.Plaid);
+    const sandboxEnabled = bankSyncEnvironment.sandboxTestingEnabled !== false;
     connectButton.disabled = !user || !configured;
     pullButton.disabled = !user || !configured || connectedBankConnections.length === 0;
+    sandboxButton.disabled = !user || !configured || connectedBankConnections.length === 0 || !sandboxEnabled;
+    sandboxButton.style.display = sandboxEnabled ? '' : 'none';
+    kicker.textContent = sandboxEnabled ? 'Bank Sync Beta' : 'Bank Sync';
+    helperText.textContent = sandboxEnabled
+        ? 'For Plaid sandbox testing, you can generate a fresh test transaction here and then review it like any other synced import.'
+        : 'Connect a bank or credit card account, then review new transactions before importing them into your budget.';
 
     if (!user) {
         setBankSyncStatus('Sign in to connect your bank and card accounts across devices.');
@@ -1330,8 +1347,43 @@ function updateBankSyncUi(user = syncUser) {
         setBankSyncStatus('Plaid Link did not load. Check your connection and try again.');
     } else if (connectedBankConnections.length === 0) {
         setBankSyncStatus('Ready to connect a bank or credit card account.');
+    } else if (connectedBankConnections.some(connection => connection.updatesAvailable)) {
+        const readyCount = connectedBankConnections.filter(connection => connection.updatesAvailable).length;
+        setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. ${readyCount} linked institution${readyCount === 1 ? '' : 's'} has new bank updates ready to review.`);
+    } else if (!sandboxEnabled) {
+        setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. Pull only new transactions anytime.`);
     } else {
         setBankSyncStatus(`Connected ${connectedBankConnections.length} institution${connectedBankConnections.length === 1 ? '' : 's'}. Pull only new transactions anytime, or generate a sandbox test transaction first.`);
+    }
+}
+
+async function loadBankSyncEnvironmentConfig() {
+    if (!syncUser || !firebaseFunctions || !window.bankSyncEnabled) {
+        bankSyncEnvironment = {
+            plaidEnvironment: 'sandbox',
+            sandboxTestingEnabled: true,
+            webhookConfigured: false
+        };
+        updateBankSyncUi(syncUser);
+        return;
+    }
+
+    try {
+        const result = await callBankSyncEndpoint('getBankSyncConfigHttp', {});
+        bankSyncEnvironment = {
+            plaidEnvironment: String(result?.plaidEnvironment || 'sandbox').toLowerCase(),
+            sandboxTestingEnabled: Boolean(result?.sandboxTestingEnabled),
+            webhookConfigured: Boolean(result?.webhookConfigured)
+        };
+    } catch (error) {
+        bankSyncEnvironment = {
+            plaidEnvironment: 'sandbox',
+            sandboxTestingEnabled: true,
+            webhookConfigured: false
+        };
+        setBankSyncStatus(`Bank sync configuration check failed: ${error.message}`);
+    } finally {
+        updateBankSyncUi(syncUser);
     }
 }
 
@@ -1357,6 +1409,9 @@ function renderBankConnections() {
                 ${escapeHtml((connection.accounts || []).map(account => account.name || account.mask || 'Account').join(' • ') || 'Accounts linked')}
                 <br>
                 Last pulled from bank: ${escapeHtml(connection.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleString() : 'Not yet pulled')}
+                ${connection.updatesAvailable
+                    ? `<br>New bank updates detected: ${escapeHtml(connection.webhookUpdateAvailableAt ? new Date(connection.webhookUpdateAvailableAt).toLocaleString() : 'Ready to review')}`
+                    : ''}
             </div>
             <div class="settings-actions">
                 <button class="secondary-button disconnect-bank-btn" data-item-id="${escapeHtml(connection.itemId || '')}">Disconnect</button>
@@ -1499,7 +1554,12 @@ function getBankSyncPullFeedback(result = {}, pulledAt = new Date().toLocaleStri
     const transactions = Array.isArray(result.transactions) ? result.transactions : [];
     const removedCount = Number(result.removedCount || 0);
     const modifiedCount = Number(result.modifiedCount || 0);
+    const reconciledRemovedCount = Number(result.reconciledRemovedCount || 0);
+    const reconciledModifiedCount = Number(result.reconciledModifiedCount || 0);
     const backgroundUpdateCount = removedCount + modifiedCount;
+    const reconciliationSuffix = (reconciledModifiedCount > 0 || reconciledRemovedCount > 0)
+        ? ` ${reconciledModifiedCount} saved bank transaction${reconciledModifiedCount === 1 ? ' was' : 's were'} updated and ${reconciledRemovedCount} ${reconciledRemovedCount === 1 ? 'was' : 'were'} removed automatically.`
+        : '';
 
     if (!transactions.length) {
         const backgroundSuffix = backgroundUpdateCount > 0
@@ -1508,7 +1568,7 @@ function getBankSyncPullFeedback(result = {}, pulledAt = new Date().toLocaleStri
         return {
             hasTransactions: false,
             previewLabel: 'Connected accounts new transactions',
-            statusText: `Last pulled from bank: ${pulledAt}. No new transactions to review.${backgroundSuffix}`,
+            statusText: `Last pulled from bank: ${pulledAt}. No new transactions to review.${backgroundSuffix}${reconciliationSuffix}`,
             alertText: 'No new bank transactions were returned this time.'
         };
     }
@@ -1519,7 +1579,7 @@ function getBankSyncPullFeedback(result = {}, pulledAt = new Date().toLocaleStri
     return {
         hasTransactions: true,
         previewLabel: `Connected accounts new transactions (${transactions.length} transaction${transactions.length === 1 ? '' : 's'})`,
-        statusText: `Last pulled from bank: ${pulledAt}. Pulled ${transactions.length} new transaction${transactions.length === 1 ? '' : 's'} for review before import.${backgroundSuffix}`,
+        statusText: `Last pulled from bank: ${pulledAt}. Pulled ${transactions.length} new transaction${transactions.length === 1 ? '' : 's'} for review before import.${backgroundSuffix}${reconciliationSuffix}`,
         alertText: ''
     };
 }
@@ -1533,10 +1593,156 @@ function getSandboxGenerationFeedback(result = {}) {
     return `Generated ${generatedCount} sandbox test transaction${generatedCount === 1 ? '' : 's'}. Pulling only new transactions now...`;
 }
 
+function mapBankSyncTransactionToAppTransaction(txn = {}, existingTransaction = null) {
+    const amount = Number(txn.amount);
+    if (!Number.isFinite(amount)) return null;
+
+    const originalCategoryBase = String(txn.name || txn.merchantName || existingTransaction?.originalCategory || 'Bank Transaction').trim();
+    const category = categorizeTransaction(
+        getBaseDescription(originalCategoryBase),
+        originalCategoryBase,
+        -amount
+    );
+    const purchaseType = existingTransaction
+        ? getTransactionPurchaseType(existingTransaction)
+        : inferPurchaseTypeForDescription(originalCategoryBase, category);
+    const note = normalizeTransactionNote(txn.note || existingTransaction?.note || [txn.pending ? 'Pending' : '', txn.accountName].filter(Boolean).join(' • '));
+
+    return {
+        date: normalizeImportedDate(txn.date) || String(txn.date || existingTransaction?.date || '').trim(),
+        originalCategory: withPurchaseTypeDescription(
+            existingTransaction?.originalCategory || originalCategoryBase,
+            purchaseType
+        ),
+        adjustedAmount: -amount,
+        category,
+        rawAmount: -amount,
+        note,
+        externalTransactionId: String(txn.externalTransactionId || txn.id || existingTransaction?.externalTransactionId || '').trim()
+    };
+}
+
+function reconcileBankSyncTransactions(result = {}) {
+    const modifiedTransactions = Array.isArray(result.modifiedTransactions) ? result.modifiedTransactions : [];
+    const removedTransactionIds = Array.isArray(result.removedTransactionIds) ? result.removedTransactionIds : [];
+    let modifiedApplied = 0;
+    let removedApplied = 0;
+
+    if (modifiedTransactions.length > 0) {
+        const modifiedMap = new Map(
+            modifiedTransactions
+                .filter(txn => txn?.externalTransactionId || txn?.id)
+                .map(txn => [String(txn.externalTransactionId || txn.id).trim(), txn])
+        );
+
+        importedTransactions = importedTransactions.map(existingTransaction => {
+            const key = String(existingTransaction?.externalTransactionId || '').trim();
+            if (!key || !modifiedMap.has(key)) return existingTransaction;
+            const reconciled = mapBankSyncTransactionToAppTransaction(modifiedMap.get(key), existingTransaction);
+            if (!reconciled) return existingTransaction;
+            modifiedApplied++;
+            return {
+                ...existingTransaction,
+                ...reconciled
+            };
+        });
+    }
+
+    if (removedTransactionIds.length > 0) {
+        const removedSet = new Set(removedTransactionIds.map(id => String(id).trim()).filter(Boolean));
+        const beforeCount = importedTransactions.length;
+        importedTransactions = importedTransactions.filter(txn => !removedSet.has(String(txn?.externalTransactionId || '').trim()));
+        removedApplied = beforeCount - importedTransactions.length;
+    }
+
+    if (modifiedApplied > 0 || removedApplied > 0) {
+        allTransactions = [...importedTransactions, ...manualTransactions];
+        saveAllTransactions();
+        updateTransactions();
+    }
+
+    return {
+        modifiedApplied,
+        removedApplied
+    };
+}
+
 function getBankSyncFunctionUrl(name) {
     const projectId = window.firebaseConfig?.projectId;
     if (!projectId) throw new Error('Firebase project ID is missing.');
     return `https://us-central1-${projectId}.cloudfunctions.net/${name}`;
+}
+
+function getPlaidOAuthRedirectUri() {
+    const location = window.location;
+    if (!location || !/^https?:$/i.test(location.protocol || '')) {
+        return '';
+    }
+
+    return `${location.origin}${location.pathname}`;
+}
+
+function hasPlaidOauthReturnState() {
+    const search = String(window.location?.search || '');
+    return /(?:\?|&)oauth_state_id=/.test(search);
+}
+
+function storePendingPlaidLinkToken(linkToken) {
+    if (!linkToken) return;
+    localStorage.setItem(PLAID_PENDING_LINK_TOKEN_KEY, linkToken);
+}
+
+function getPendingPlaidLinkToken() {
+    return localStorage.getItem(PLAID_PENDING_LINK_TOKEN_KEY) || '';
+}
+
+function clearPendingPlaidLinkToken() {
+    localStorage.removeItem(PLAID_PENDING_LINK_TOKEN_KEY);
+}
+
+function clearPlaidOauthReturnState() {
+    if (!window.history?.replaceState || !window.location) return;
+    const cleanUrl = `${window.location.origin}${window.location.pathname}${window.location.hash || ''}`;
+    window.history.replaceState({}, document.title, cleanUrl);
+}
+
+async function finalizeLinkedBankAccount(publicToken, metadata) {
+    setBankSyncStatus('Link successful. Saving connected account...');
+    await callBankSyncEndpoint('exchangePlaidPublicTokenHttp', {
+        publicToken,
+        institution: metadata?.institution || null,
+        accounts: metadata?.accounts || []
+    });
+    clearPendingPlaidLinkToken();
+    clearPlaidOauthReturnState();
+    setBankSyncStatus('Account linked. You can pull transactions now.');
+}
+
+function createPlaidHandler(linkToken, { receivedRedirectUri = '' } = {}) {
+    return window.Plaid.create({
+        token: linkToken,
+        ...(receivedRedirectUri ? { receivedRedirectUri } : {}),
+        onSuccess: async (publicToken, metadata) => {
+            try {
+                await finalizeLinkedBankAccount(publicToken, metadata);
+            } catch (error) {
+                setBankSyncStatus(`Saving linked account failed: ${error.message}`);
+                alert(`Saving linked account failed: ${error.message}`);
+            } finally {
+                updateBankSyncUi(syncUser);
+            }
+        },
+        onExit: error => {
+            if (!hasPlaidOauthReturnState()) {
+                clearPendingPlaidLinkToken();
+            }
+            if (error) {
+                setBankSyncStatus(`Bank linking exited: ${error.display_message || error.error_message || error.error_code}`);
+            } else {
+                setBankSyncStatus('Bank linking was closed before an account was connected.');
+            }
+        }
+    });
 }
 
 async function callBankSyncEndpoint(name, payload = {}) {
@@ -1585,36 +1791,14 @@ async function connectBankAccount() {
     setBankSyncStatus('Creating a secure bank-link session...');
 
     try {
-        const result = await callBankSyncEndpoint('createPlaidLinkTokenHttp', {});
+        const redirectUri = getPlaidOAuthRedirectUri();
+        const result = await callBankSyncEndpoint('createPlaidLinkTokenHttp', {
+            ...(redirectUri ? { redirectUri } : {})
+        });
         const linkToken = result?.linkToken;
         if (!linkToken) throw new Error('Missing link token from the bank sync service.');
-
-        const handler = window.Plaid.create({
-            token: linkToken,
-            onSuccess: async (publicToken, metadata) => {
-                try {
-                    setBankSyncStatus('Link successful. Saving connected account...');
-                    await callBankSyncEndpoint('exchangePlaidPublicTokenHttp', {
-                        publicToken,
-                        institution: metadata?.institution || null,
-                        accounts: metadata?.accounts || []
-                    });
-                    setBankSyncStatus('Account linked. You can pull transactions now.');
-                } catch (error) {
-                    setBankSyncStatus(`Saving linked account failed: ${error.message}`);
-                    alert(`Saving linked account failed: ${error.message}`);
-                } finally {
-                    updateBankSyncUi(syncUser);
-                }
-            },
-            onExit: error => {
-                if (error) {
-                    setBankSyncStatus(`Bank linking exited: ${error.display_message || error.error_message || error.error_code}`);
-                } else {
-                    setBankSyncStatus('Bank linking was closed before an account was connected.');
-                }
-            }
-        });
+        storePendingPlaidLinkToken(linkToken);
+        const handler = createPlaidHandler(linkToken);
 
         handler.open();
     } catch (error) {
@@ -1622,6 +1806,33 @@ async function connectBankAccount() {
         alert(`Bank link setup failed: ${error.message}`);
     } finally {
         setButtonLoading(button, false);
+    }
+}
+
+async function resumePlaidOauthIfNeeded() {
+    if (plaidOauthResumeAttempted) return;
+    plaidOauthResumeAttempted = true;
+
+    if (!syncUser || !window.bankSyncEnabled || !firebaseFunctions || !window.Plaid || !hasPlaidOauthReturnState()) {
+        return;
+    }
+
+    const linkToken = getPendingPlaidLinkToken();
+    if (!linkToken) {
+        setBankSyncStatus('Plaid OAuth returned, but the app could not find the original Link session. Start Connect Bank or Card again.');
+        return;
+    }
+
+    try {
+        setBankSyncStatus('Resuming secure bank connection after OAuth...');
+        const handler = createPlaidHandler(linkToken, {
+            receivedRedirectUri: window.location.href
+        });
+        handler.open();
+    } catch (error) {
+        clearPendingPlaidLinkToken();
+        setBankSyncStatus(`Could not resume bank linking after OAuth: ${error.message}`);
+        alert(`Could not resume bank linking after OAuth: ${error.message}`);
     }
 }
 
@@ -1637,6 +1848,9 @@ async function pullLatestBankTransactions() {
 
     try {
         const result = await callBankSyncEndpoint('syncPlaidTransactionsHttp', {});
+        const reconciliation = reconcileBankSyncTransactions(result);
+        result.reconciledModifiedCount = reconciliation.modifiedApplied;
+        result.reconciledRemovedCount = reconciliation.removedApplied;
         const pulledAt = new Date().toLocaleString();
         const feedback = getBankSyncPullFeedback(result, pulledAt);
 
@@ -1660,6 +1874,10 @@ async function pullLatestBankTransactions() {
 async function generateSandboxTestTransaction() {
     if (!syncUser || !firebaseFunctions) {
         alert('Sign in and finish bank sync setup first.');
+        return;
+    }
+    if (!bankSyncEnvironment.sandboxTestingEnabled) {
+        alert('Sandbox test transactions are only available while Plaid is running in sandbox mode.');
         return;
     }
 
@@ -1926,7 +2144,9 @@ function initFirebaseSync() {
                 setSyncStatus(`Signed in as ${user.email}. Syncing...`);
                 subscribeToCloudState(user);
                 if (window.bankSyncEnabled && firebaseFunctions) {
+                    loadBankSyncEnvironmentConfig();
                     subscribeToBankConnections(user);
+                    resumePlaidOauthIfNeeded();
                 } else {
                     connectedBankConnections = [];
                     renderBankConnections();
@@ -1937,6 +2157,11 @@ function initFirebaseSync() {
                 if (bankConnectionsUnsubscribe) bankConnectionsUnsubscribe();
                 bankConnectionsUnsubscribe = null;
                 connectedBankConnections = [];
+                bankSyncEnvironment = {
+                    plaidEnvironment: 'sandbox',
+                    sandboxTestingEnabled: true,
+                    webhookConfigured: false
+                };
                 renderBankConnections();
                 setSyncStatus(isDemoModeActive()
                     ? 'Demo mode is active locally. Sync is paused until demo data is cleared.'
@@ -2026,6 +2251,11 @@ function clearLocalAppData() {
         currentProfile = getDefaultProfile();
         currentSnapshotTab = 'overview';
         connectedBankConnections = [];
+        bankSyncEnvironment = {
+            plaidEnvironment: 'sandbox',
+            sandboxTestingEnabled: true,
+            webhookConfigured: false
+        };
         budgetCategories = cloneDefaultCategories();
         budgetGoals = { ...DEFAULT_BUDGET_GOALS };
         categoryManagerDraft = normalizeBudgetCategories(budgetCategories);

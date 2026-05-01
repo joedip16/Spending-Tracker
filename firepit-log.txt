@@ -10,4 +10,15 @@ Checking for npm/bin/npm-cli install at /Users/joedippolito/.cache/firebase/tool
 Checking for npm/bin/npm-cli install at /Users/joedippolito/.cache/firebase/tools/node_modules/npm/bin/npm-cli
 Checking for npm/bin/npm-cli install at /snapshot/firepit/node_modules/npm/bin/npm-cli
 Found npm/bin/npm-cli install.
-ShellJSInternalError: ENOENT: no such file or directory, chmod '/Users/joedippolito/.cache/firebase/runtime/shell'
+Runtime binaries created.
+/Users/joedippolito/Coding/50:30:20 Tracker/firebase_tools
+/Users/joedippolito/Coding/50:30:20 Tracker/firebase_tools,/snapshot/firepit/firepit.js,deploy,--only,functions
+Checking for npm/bin/npm-cli install at /Users/joedippolito/.cache/firebase/tools/lib/node_modules/npm/bin/npm-cli
+Checking for npm/bin/npm-cli install at /Users/joedippolito/.cache/firebase/tools/node_modules/npm/bin/npm-cli
+Checking for npm/bin/npm-cli install at /snapshot/firepit/node_modules/npm/bin/npm-cli
+Found npm/bin/npm-cli install.
+Checking for npm/bin/npm-cli install at /Users/joedippolito/.cache/firebase/tools/lib/node_modules/npm/bin/npm-cli
+Checking for npm/bin/npm-cli install at /Users/joedippolito/.cache/firebase/tools/node_modules/npm/bin/npm-cli
+Checking for npm/bin/npm-cli install at /snapshot/firepit/node_modules/npm/bin/npm-cli
+Found npm/bin/npm-cli install.
+ShellJSInternalError: ENOENT: no such file or directory, chmod '/Users/joedippolito/.cache/firebase/runtime/node.js'

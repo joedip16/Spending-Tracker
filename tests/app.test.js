@@ -503,6 +503,71 @@ test('bank sync preview transactions carry external ids and mark repeat pulls as
   assert.equal(previewRows[0].selected, false);
 });
 
+test('bank sync reconciliation updates modified saved transactions', () => {
+  const app = loadApp();
+  app.run(`
+    importedTransactions = [{
+      date: '04/20/2026',
+      originalCategory: 'Coffee Shop',
+      adjustedAmount: -14.5,
+      category: 'wants',
+      rawAmount: -14.5,
+      note: 'Old note',
+      externalTransactionId: 'plaid_txn_123'
+    }];
+    manualTransactions = [];
+    allTransactions = importedTransactions.slice();
+    saveAllTransactions = () => {};
+    updateTransactions = () => {};
+  `);
+
+  const result = app.context.reconcileBankSyncTransactions({
+    modifiedTransactions: [{
+      externalTransactionId: 'plaid_txn_123',
+      date: '2026-04-21',
+      name: 'Coffee Shop Updated',
+      amount: 15.75,
+      accountName: 'Visa',
+      note: 'Updated note'
+    }],
+    removedTransactionIds: []
+  });
+
+  const updated = app.run('importedTransactions[0]');
+  assert.equal(result.modifiedApplied, 1);
+  assert.equal(result.removedApplied, 0);
+  assert.equal(updated.date, '04/21/2026');
+  assert.equal(updated.adjustedAmount, -15.75);
+  assert.equal(updated.note, 'Updated note');
+});
+
+test('bank sync reconciliation removes deleted saved transactions', () => {
+  const app = loadApp();
+  app.run(`
+    importedTransactions = [{
+      date: '04/20/2026',
+      originalCategory: 'Coffee Shop',
+      adjustedAmount: -14.5,
+      category: 'wants',
+      rawAmount: -14.5,
+      externalTransactionId: 'plaid_txn_123'
+    }];
+    manualTransactions = [];
+    allTransactions = importedTransactions.slice();
+    saveAllTransactions = () => {};
+    updateTransactions = () => {};
+  `);
+
+  const result = app.context.reconcileBankSyncTransactions({
+    modifiedTransactions: [],
+    removedTransactionIds: ['plaid_txn_123']
+  });
+
+  assert.equal(result.modifiedApplied, 0);
+  assert.equal(result.removedApplied, 1);
+  assert.equal(app.run('importedTransactions.length'), 0);
+});
+
 test('transaction source label identifies bank synced transactions', () => {
   const app = loadApp();
   const bankTxn = {
@@ -534,6 +599,66 @@ test('bank connection cards show last pulled from bank wording', () => {
   const html = app.run(`document.getElementById('bank-connections-list').innerHTML`);
   assert.ok(html.includes('Last pulled from bank:'));
   assert.ok(html.includes('Not yet pulled'));
+});
+
+test('bank connection cards show webhook-detected update status', () => {
+  const app = loadApp();
+  app.run(`
+    connectedBankConnections = [{
+      institutionName: 'Test Bank',
+      accounts: [{ name: 'Checking' }],
+      lastSyncAt: '2026-04-20T12:00:00.000Z',
+      updatesAvailable: true,
+      webhookUpdateAvailableAt: '2026-04-22T10:15:00.000Z',
+      itemId: 'item_123'
+    }];
+    syncUser = { uid: 'abc', email: 'test@example.com' };
+  `);
+
+  app.context.renderBankConnections();
+  const html = app.run(`document.getElementById('bank-connections-list').innerHTML`);
+  assert.ok(html.includes('New bank updates detected:'));
+});
+
+test('bank sync ui hides sandbox tools outside sandbox mode', () => {
+  const app = loadApp();
+  app.run(`
+    syncUser = { uid: 'abc', email: 'test@example.com' };
+    firebaseFunctions = {};
+    window.Plaid = {};
+    window.bankSyncEnabled = true;
+    connectedBankConnections = [{
+      institutionName: 'Real Bank',
+      accounts: [{ name: 'Checking' }],
+      itemId: 'item_123'
+    }];
+    bankSyncEnvironment = {
+      plaidEnvironment: 'development',
+      sandboxTestingEnabled: false,
+      webhookConfigured: true
+    };
+  `);
+
+  app.context.updateBankSyncUi();
+  assert.equal(app.run(`document.getElementById('bank-sync-kicker').textContent`), 'Bank Sync');
+  assert.equal(app.run(`document.getElementById('generate-sandbox-transaction-btn').style.display`), 'none');
+  assert.match(app.run(`document.getElementById('bank-sync-helper-text').textContent`), /Connect a bank or credit card account/);
+});
+
+test('plaid oauth redirect uri uses the current hosted page without query params', () => {
+  const app = loadApp();
+  app.context.window.location = {
+    protocol: 'https:',
+    origin: 'https://budget-tracker-b0f66.web.app',
+    pathname: '/index.html',
+    search: '?foo=bar',
+    hash: '#hash'
+  };
+
+  assert.equal(
+    app.context.getPlaidOAuthRedirectUri(),
+    'https://budget-tracker-b0f66.web.app/index.html'
+  );
 });
 
 test('bank sync pull feedback describes new-only pulls and background updates', () => {
