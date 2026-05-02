@@ -37,6 +37,7 @@ service cloud.firestore {
           'importedTransactions',
           'manualTransactions',
           'budgetCategories',
+          'merchantRules',
           'recurringTransactions',
           'skippedRecurringOccurrences',
           'currentSnapshotTab',
@@ -48,6 +49,7 @@ service cloud.firestore {
         && data.importedTransactions is list
         && data.manualTransactions is list
         && data.budgetCategories is map
+        && data.merchantRules is list
         && data.recurringTransactions is list
         && data.skippedRecurringOccurrences is list
         && data.currentSnapshotTab is string

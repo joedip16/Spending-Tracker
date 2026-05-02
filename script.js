@@ -16,6 +16,9 @@ let currentPage = 'home';
 let currentProfile = null;
 let currentSnapshotTab = 'overview';
 let budgetCategories = null;
+let merchantRules = [];
+let merchantRulesDraft = null;
+let merchantRulesDirty = false;
 let recurringTransactions = [];
 let skippedRecurringOccurrences = [];
 let budgetGoals = null;
@@ -362,6 +365,17 @@ function normalizeBudgetCategories(categories) {
     };
 }
 
+function normalizeMerchantRules(rules) {
+    return (Array.isArray(rules) ? rules : [])
+        .map((rule, index) => ({
+            id: String(rule?.id || `merchant-rule-${index}-${Date.now()}`),
+            pattern: String(rule?.pattern || rule?.merchant || '').trim(),
+            category: ['income', 'needs', 'wants', 'uncategorized'].includes(rule?.category) ? rule.category : 'uncategorized',
+            purchaseType: rule?.purchaseType === 'joint' ? 'joint' : 'single'
+        }))
+        .filter(rule => rule.pattern);
+}
+
 function loadBudgetCategories() {
     const savedCategories = localStorage.getItem('budgetCategories');
     if (!savedCategories) {
@@ -384,6 +398,38 @@ function saveBudgetCategories() {
     budgetCategories = normalizeBudgetCategories(budgetCategories);
     localStorage.setItem('budgetCategories', JSON.stringify(budgetCategories));
     queueCloudSync();
+}
+
+function loadMerchantRules() {
+    const savedRules = localStorage.getItem('merchantRules');
+    if (!savedRules) {
+        merchantRules = [];
+        merchantRulesDraft = [];
+        merchantRulesDirty = false;
+        return;
+    }
+
+    try {
+        merchantRules = normalizeMerchantRules(JSON.parse(savedRules));
+    } catch (error) {
+        merchantRules = [];
+    }
+    merchantRulesDraft = normalizeMerchantRules(merchantRules);
+    merchantRulesDirty = false;
+}
+
+function saveMerchantRules() {
+    merchantRules = normalizeMerchantRules(merchantRules);
+    localStorage.setItem('merchantRules', JSON.stringify(merchantRules));
+    queueCloudSync();
+}
+
+function ensureMerchantRulesDraft() {
+    if (!merchantRulesDraft) {
+        if (!merchantRules) loadMerchantRules();
+        merchantRulesDraft = normalizeMerchantRules(merchantRules);
+    }
+    return merchantRulesDraft;
 }
 
 function ensureCategoryManagerDraft() {
@@ -488,6 +534,7 @@ function escapeHtml(value) {
 
 function refreshAfterCategoryChange() {
     renderCategoryManager();
+    renderMerchantRuleManager();
     renderHomeDashboard();
     populateManualDescriptionOptions();
     if (allTransactions.length > 0) {
@@ -507,6 +554,15 @@ function setCategoryManagerDirty(isDirty, statusMessage = '') {
     status.textContent = statusMessage || (isDirty
         ? 'You have unsaved category edits.'
         : 'No pending category edits.');
+}
+
+function setMerchantRulesDirty(isDirty, statusMessage = '') {
+    merchantRulesDirty = isDirty;
+    const status = document.getElementById('merchant-rules-status');
+    if (!status) return;
+    status.textContent = statusMessage || (isDirty
+        ? 'You have unsaved merchant rule edits.'
+        : 'No pending merchant rule edits.');
 }
 
 function renderCategoryManager() {
@@ -570,6 +626,134 @@ function renderCategoryManager() {
     });
 
     setCategoryManagerDirty(categoryManagerDirty);
+}
+
+function renderMerchantRuleManager() {
+    const container = document.getElementById('merchant-rules-list');
+    if (!container) return;
+    const draft = ensureMerchantRulesDraft();
+
+    if (draft.length === 0) {
+        container.innerHTML = '<p class="panel-copy">No merchant rules yet. Add one above to auto-assign a category and single/joint default.</p>';
+    } else {
+        container.innerHTML = draft.map((rule, index) => `
+            <div class="merchant-rule-row" data-index="${index}">
+                <input type="text" class="merchant-rule-pattern-input" value="${escapeHtml(rule.pattern)}" placeholder="Match text, e.g., starbucks" aria-label="Merchant match text">
+                <select class="merchant-rule-category-input" aria-label="${escapeHtml(rule.pattern)} category">
+                    <option value="income" ${rule.category === 'income' ? 'selected' : ''}>Income / Savings</option>
+                    <option value="needs" ${rule.category === 'needs' ? 'selected' : ''}>Needs</option>
+                    <option value="wants" ${rule.category === 'wants' ? 'selected' : ''}>Wants</option>
+                    <option value="uncategorized" ${rule.category === 'uncategorized' ? 'selected' : ''}>Uncategorized</option>
+                </select>
+                <select class="merchant-rule-purchase-type-input" aria-label="${escapeHtml(rule.pattern)} purchase type">
+                    <option value="single" ${rule.purchaseType !== 'joint' ? 'selected' : ''}>Single</option>
+                    <option value="joint" ${rule.purchaseType === 'joint' ? 'selected' : ''}>Joint</option>
+                </select>
+                <button class="delete-merchant-rule-btn danger-button" data-index="${index}">Delete</button>
+            </div>
+        `).join('');
+    }
+
+    container.querySelectorAll('.merchant-rule-row input, .merchant-rule-row select').forEach(input => {
+        input.addEventListener('input', () => updateMerchantRuleDraftFromRow(input.closest('.merchant-rule-row')));
+        input.addEventListener('change', () => updateMerchantRuleDraftFromRow(input.closest('.merchant-rule-row')));
+    });
+
+    container.querySelectorAll('.delete-merchant-rule-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            const index = parseInt(button.dataset.index, 10);
+            const rule = draft[index];
+            if (!rule || !confirm(`Delete the merchant rule for "${rule.pattern}"?`)) return;
+            draft.splice(index, 1);
+            setMerchantRulesDirty(true);
+            renderMerchantRuleManager();
+        });
+    });
+
+    setMerchantRulesDirty(merchantRulesDirty);
+}
+
+function updateMerchantRuleDraftFromRow(row) {
+    if (!row) return;
+    const index = parseInt(row.dataset.index, 10);
+    const draft = ensureMerchantRulesDraft();
+    if (Number.isNaN(index) || !draft[index]) return;
+
+    draft[index] = {
+        ...draft[index],
+        pattern: row.querySelector('.merchant-rule-pattern-input').value.trim(),
+        category: row.querySelector('.merchant-rule-category-input').value,
+        purchaseType: row.querySelector('.merchant-rule-purchase-type-input').value === 'joint' ? 'joint' : 'single'
+    };
+    setMerchantRulesDirty(true);
+}
+
+function validateMerchantRulesDraft() {
+    const draft = ensureMerchantRulesDraft();
+    const patterns = new Set();
+
+    for (const rule of draft) {
+        if (!rule.pattern) {
+            alert('Please enter match text for every merchant rule before saving.');
+            return false;
+        }
+        const normalizedPattern = rule.pattern.toLowerCase();
+        if (patterns.has(normalizedPattern)) {
+            alert(`"${rule.pattern}" appears more than once in merchant rules. Please keep each match text unique.`);
+            return false;
+        }
+        patterns.add(normalizedPattern);
+    }
+
+    return true;
+}
+
+function saveMerchantRuleChanges() {
+    if (!validateMerchantRulesDraft()) return false;
+    merchantRules = normalizeMerchantRules(ensureMerchantRulesDraft());
+    saveMerchantRules();
+    merchantRulesDraft = normalizeMerchantRules(merchantRules);
+    setMerchantRulesDirty(false, 'Merchant rules saved.');
+    populateManualDescriptionOptions();
+    return true;
+}
+
+function discardMerchantRuleChanges() {
+    if (!merchantRulesDirty) return;
+    merchantRulesDraft = normalizeMerchantRules(merchantRules);
+    setMerchantRulesDirty(false, 'Unsaved merchant rule changes discarded.');
+    renderMerchantRuleManager();
+}
+
+function addMerchantRule() {
+    const patternInput = document.getElementById('new-merchant-rule-pattern');
+    const categoryInput = document.getElementById('new-merchant-rule-category');
+    const purchaseTypeInput = document.getElementById('new-merchant-rule-purchase-type');
+    const pattern = patternInput.value.trim();
+    const category = categoryInput.value;
+    const purchaseType = purchaseTypeInput.value === 'joint' ? 'joint' : 'single';
+    const draft = ensureMerchantRulesDraft();
+
+    if (!pattern) {
+        alert('Please enter merchant match text.');
+        return;
+    }
+    if (draft.some(rule => rule.pattern.toLowerCase() === pattern.toLowerCase())) {
+        alert('That merchant rule already exists.');
+        return;
+    }
+
+    draft.unshift({
+        id: `merchant-rule-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        pattern,
+        category,
+        purchaseType
+    });
+    patternInput.value = '';
+    categoryInput.value = 'wants';
+    purchaseTypeInput.value = 'single';
+    setMerchantRulesDirty(true);
+    renderMerchantRuleManager();
 }
 
 function updateCategoryDraftFromRow(row) {
@@ -976,6 +1160,7 @@ function buildAppStatePayload() {
         importedTransactions,
         manualTransactions,
         budgetCategories: normalizeBudgetCategories(budgetCategories),
+        merchantRules: normalizeMerchantRules(merchantRules),
         recurringTransactions,
         skippedRecurringOccurrences,
         currentSnapshotTab,
@@ -1071,6 +1256,8 @@ function buildBackupCsv(payload) {
         ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '', txn.externalTransactionId || '']),
         ['budgetCategory', 'type', 'name', 'keywords', 'monthlyGoal', 'defaultPurchaseType'],
         ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || '', category.defaultPurchaseType || 'single'])),
+        ['merchantRule', 'pattern', 'category', 'purchaseType'],
+        ...normalizeMerchantRules(data.merchantRules).map(rule => ['merchantRule', rule.pattern, rule.category, rule.purchaseType || 'single']),
         ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate'],
         ...data.recurringTransactions.map(item => ['recurringTransaction', item.id, item.description, item.amount, item.category, item.purchaseType, item.frequency || 'monthly', item.dayOfMonth, item.startMonth || '', item.startDate || '']),
         ['skippedRecurringOccurrence', 'key'],
@@ -1122,6 +1309,7 @@ function parseBackupCsv(csvText) {
         importedTransactions: [],
         manualTransactions: [],
         budgetCategories: { income: [], needs: [], wants: [] },
+        merchantRules: [],
         budgetGoals: { ...DEFAULT_BUDGET_GOALS },
         recurringTransactions: [],
         skippedRecurringOccurrences: [],
@@ -1159,6 +1347,12 @@ function parseBackupCsv(csvText) {
                     defaultPurchaseType: row[5] === 'joint' ? 'joint' : 'single'
                 });
             }
+        } else if (section === 'merchantRule' && row[1] !== 'pattern') {
+            data.merchantRules.push({
+                pattern: row[1] || '',
+                category: row[2] || 'uncategorized',
+                purchaseType: row[3] === 'joint' ? 'joint' : 'single'
+            });
         } else if (section === 'recurringTransaction' && row[1] !== 'id') {
             data.recurringTransactions.push({
                 id: row[1] || '',
@@ -1192,6 +1386,7 @@ function validateBackupPayload(payload) {
         importedTransactions: data.importedTransactions,
         manualTransactions: data.manualTransactions,
         budgetCategories: normalizeBudgetCategories(data.budgetCategories),
+        merchantRules: normalizeMerchantRules(data.merchantRules),
         budgetGoals: normalizeBudgetGoals(data.budgetGoals),
         recurringTransactions: Array.isArray(data.recurringTransactions) ? data.recurringTransactions : [],
         skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
@@ -1246,6 +1441,9 @@ function applyRestoredAppState(restoredData) {
         budgetCategories = restoredData.budgetCategories;
         categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
         categoryManagerDirty = false;
+        merchantRules = normalizeMerchantRules(restoredData.merchantRules);
+        merchantRulesDraft = normalizeMerchantRules(merchantRules);
+        merchantRulesDirty = false;
         budgetGoals = restoredData.budgetGoals;
         recurringTransactions = restoredData.recurringTransactions;
         skippedRecurringOccurrences = restoredData.skippedRecurringOccurrences;
@@ -1257,6 +1455,7 @@ function applyRestoredAppState(restoredData) {
         localStorage.setItem('appStateUpdatedAt', localStateUpdatedAt);
         saveAllTransactions();
         saveBudgetCategories();
+        saveMerchantRules();
         saveBudgetGoals(budgetGoals);
         saveRecurringTransactions();
         setDarkMode(restoredData.darkMode);
@@ -1264,6 +1463,7 @@ function applyRestoredAppState(restoredData) {
         allTransactions = [...importedTransactions, ...manualTransactions];
         applyProfileToUI();
         renderCategoryManager();
+        renderMerchantRuleManager();
         syncBudgetGoalForm();
         updateBudgetGoalTargets();
         renderRecurringManager();
@@ -2265,6 +2465,7 @@ function buildAppStatePayloadFromRestored(restoredData) {
         importedTransactions: restoredData.importedTransactions,
         manualTransactions: restoredData.manualTransactions,
         budgetCategories: restoredData.budgetCategories,
+        merchantRules: restoredData.merchantRules,
         recurringTransactions: restoredData.recurringTransactions,
         skippedRecurringOccurrences: restoredData.skippedRecurringOccurrences,
         currentSnapshotTab: restoredData.currentSnapshotTab
@@ -2394,6 +2595,7 @@ function clearLocalAppData() {
             'budgetProfile',
             'budgetGoals',
             'budgetCategories',
+            'merchantRules',
             'recurringTransactions',
             'skippedRecurringOccurrences',
             'importedTransactions',
@@ -2427,6 +2629,9 @@ function clearLocalAppData() {
             webhookConfigured: false
         };
         budgetCategories = cloneDefaultCategories();
+        merchantRules = [];
+        merchantRulesDraft = [];
+        merchantRulesDirty = false;
         budgetGoals = { ...DEFAULT_BUDGET_GOALS };
         categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
         categoryManagerDirty = false;
@@ -2442,6 +2647,7 @@ function clearLocalAppData() {
         syncBudgetGoalForm();
         updateBudgetGoalTargets();
         renderCategoryManager();
+        renderMerchantRuleManager();
         renderRecurringManager();
         resetCalculatedOutput();
         syncResultsVisibility();
@@ -2976,6 +3182,7 @@ function loadPersistedData() {
     loadProfile();
     loadBudgetGoals();
     loadBudgetCategories();
+    loadMerchantRules();
     loadRecurringTransactions();
     localStateUpdatedAt = localStorage.getItem('appStateUpdatedAt') || '';
 
@@ -2996,6 +3203,7 @@ function loadPersistedData() {
     syncBudgetGoalForm();
     updateBudgetGoalTargets();
     renderCategoryManager();
+    renderMerchantRuleManager();
     renderRecurringManager();
     setDemoModeStatus();
     syncTransactionsListCollapsedState();
@@ -3383,9 +3591,24 @@ function getSelectedManualDescription() {
     return select.value.trim();
 }
 
+function findMatchingMerchantRule(description) {
+    const lookup = getBaseDescription(description).toLowerCase();
+    if (!lookup) return null;
+
+    return normalizeMerchantRules(merchantRules)
+        .slice()
+        .sort((a, b) => b.pattern.length - a.pattern.length)
+        .find(rule => lookup.includes(rule.pattern.toLowerCase())) || null;
+}
+
 function inferCategoryForDescription(description) {
     const baseDescription = getBaseDescription(description).toLowerCase();
     if (!baseDescription) return 'income';
+
+    const merchantRule = findMatchingMerchantRule(description);
+    if (merchantRule?.category && merchantRule.category !== 'uncategorized') {
+        return merchantRule.category;
+    }
 
     const previousMatches = allTransactions.filter(txn => getBaseDescription(txn.originalCategory).toLowerCase() === baseDescription);
     if (previousMatches.length > 0) {
@@ -3409,6 +3632,11 @@ function inferCategoryForDescription(description) {
 function inferPurchaseTypeForDescription(description, category) {
     const baseDescription = getBaseDescription(description).toLowerCase();
     if (!baseDescription) return 'single';
+
+    const merchantRule = findMatchingMerchantRule(description);
+    if (merchantRule?.purchaseType) {
+        return merchantRule.purchaseType === 'joint' ? 'joint' : 'single';
+    }
 
     const previousMatches = allTransactions.filter(txn => getBaseDescription(txn.originalCategory).toLowerCase() === baseDescription);
     if (previousMatches.length > 0) {
@@ -4711,9 +4939,12 @@ function categorizeTransaction(cleanedCategory, originalCategory, amount) {
     const originalLower = originalCategory.toLowerCase();
     const cleanedLower = cleanedCategory.toLowerCase();
     const isIncome = amount > 0;
+    const merchantRule = findMatchingMerchantRule(originalCategory) || findMatchingMerchantRule(cleanedCategory);
     const incomeMatch = findMatchingCategoryName('income', `${cleanedLower} ${originalLower}`);
     const needsMatch = findMatchingCategoryName('needs', cleanedLower);
     const wantsMatch = findMatchingCategoryName('wants', cleanedLower);
+
+    if (merchantRule?.category && merchantRule.category !== 'uncategorized') return merchantRule.category;
 
     if (isIncome && (incomeMatch || originalLower.includes('(income)'))) return 'income';
 
@@ -5362,14 +5593,16 @@ function attachViewModeListeners() {
 }
 
 function switchPage(page) {
-    if (currentPage === 'settings' && page !== 'settings' && categoryManagerDirty) {
-        const shouldSave = confirm('You have unsaved category changes. Press OK to save them before leaving Settings.');
+    if (currentPage === 'settings' && page !== 'settings' && (categoryManagerDirty || merchantRulesDirty)) {
+        const shouldSave = confirm('You have unsaved Settings changes. Press OK to save them before leaving Settings.');
         if (shouldSave) {
             if (!saveCategoryManagerChanges()) return false;
+            if (!saveMerchantRuleChanges()) return false;
         } else {
-            const shouldDiscard = confirm('Discard your unsaved category changes and leave Settings?');
+            const shouldDiscard = confirm('Discard your unsaved Settings changes and leave Settings?');
             if (!shouldDiscard) return false;
             discardCategoryManagerChanges();
+            discardMerchantRuleChanges();
         }
     }
 
@@ -5422,6 +5655,13 @@ function attachNavigationListeners() {
         discardCategoryManagerChanges();
     });
     document.getElementById('reset-categories-btn').addEventListener('click', resetManagedCategories);
+    document.getElementById('add-merchant-rule-btn').addEventListener('click', addMerchantRule);
+    document.getElementById('save-merchant-rules-btn').addEventListener('click', saveMerchantRuleChanges);
+    document.getElementById('discard-merchant-rules-btn').addEventListener('click', () => {
+        if (!merchantRulesDirty) return;
+        if (!confirm('Discard your unsaved merchant rule changes?')) return;
+        discardMerchantRuleChanges();
+    });
     document.getElementById('add-recurring-btn').addEventListener('click', addRecurringTransaction);
     document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
     document.getElementById('export-backup-btn').addEventListener('click', exportBackup);
@@ -5715,7 +5955,7 @@ window.addEventListener('online', () => {
 });
 window.addEventListener('offline', updateConnectionBanner);
 window.addEventListener('beforeunload', event => {
-    if (!categoryManagerDirty) return;
+    if (!categoryManagerDirty && !merchantRulesDirty) return;
     event.preventDefault();
     event.returnValue = '';
 });

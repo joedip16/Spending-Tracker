@@ -887,6 +887,53 @@ test('backup CSV preserves transaction notes', () => {
   assert.equal(parsed.data.importedTransactions[0].note, 'Dinner with friends');
 });
 
+test('merchant rules override inferred category and purchase type', () => {
+  const app = loadApp();
+
+  app.run(`
+    merchantRules = normalizeMerchantRules([
+      { pattern: 'starbucks', category: 'wants', purchaseType: 'joint' }
+    ]);
+    importedTransactions = [];
+    manualTransactions = [];
+    allTransactions = [];
+    budgetCategories = cloneDefaultCategories();
+  `);
+
+  assert.equal(app.context.inferCategoryForDescription('Starbucks Store 123'), 'wants');
+  assert.equal(app.context.inferPurchaseTypeForDescription('Starbucks Store 123', 'wants'), 'joint');
+});
+
+test('backup validation and CSV preserve merchant rules', () => {
+  const app = loadApp();
+  const backup = {
+    appName: '50:30:20 Budget Tracker',
+    version: 1,
+    data: {
+      profile: { name: 'Tester', isSharedBudget: false, householdName: '' },
+      darkMode: false,
+      budgetGoals: { needs: 50, wants: 30, savings: 20 },
+      budgetCategories: {},
+      merchantRules: [{ pattern: 'starbucks', category: 'wants', purchaseType: 'joint' }],
+      importedTransactions: [],
+      manualTransactions: [],
+      recurringTransactions: [],
+      skippedRecurringOccurrences: [],
+      currentSnapshotTab: 'overview'
+    }
+  };
+
+  const validated = app.context.validateBackupPayload(backup);
+  assert.equal(validated.merchantRules.length, 1);
+  assert.equal(validated.merchantRules[0].pattern, 'starbucks');
+  assert.equal(validated.merchantRules[0].purchaseType, 'joint');
+
+  const csv = app.context.buildBackupCsv(backup);
+  const parsed = app.context.parseBackupCsv(csv);
+  assert.equal(parsed.data.merchantRules.length, 1);
+  assert.equal(parsed.data.merchantRules[0].category, 'wants');
+});
+
 test('sync payload validation includes required app state and updatedAt', () => {
   const app = loadApp();
   const imported = [{
@@ -901,6 +948,7 @@ test('sync payload validation includes required app state and updatedAt', () => 
     currentProfile = { name: 'Tester', isSharedBudget: false, householdName: '' };
     budgetGoals = { needs: 50, wants: 30, savings: 20 };
     budgetCategories = cloneDefaultCategories();
+    merchantRules = normalizeMerchantRules([{ pattern: 'starbucks', category: 'wants', purchaseType: 'joint' }]);
     recurringTransactions = [];
     skippedRecurringOccurrences = [];
     importedTransactions = __testValue;
@@ -914,5 +962,6 @@ test('sync payload validation includes required app state and updatedAt', () => 
   assert.equal(payload.importedTransactions.length, 1);
   assert.equal(payload.manualTransactions.length, 0);
   assert.equal(payload.budgetGoals.savings, 20);
+  assert.equal(payload.merchantRules.length, 1);
   assert.match(payload.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
 });

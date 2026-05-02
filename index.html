@@ -554,6 +554,34 @@
                         </div>
                     </section>
 
+                    <section class="panel settings-card merchant-rules-card">
+                        <p class="panel-kicker">Rules</p>
+                        <h3>Merchant Rules</h3>
+                        <p class="panel-copy">Create simple auto-rules so repeated merchants default to the right category and Single or Joint setting during manual adds and imports.</p>
+
+                        <div class="merchant-rule-add-form">
+                            <input type="text" id="new-merchant-rule-pattern" placeholder="Match text, e.g., starbucks">
+                            <select id="new-merchant-rule-category">
+                                <option value="wants">Wants</option>
+                                <option value="needs">Needs</option>
+                                <option value="income">Income / Savings</option>
+                                <option value="uncategorized">Uncategorized</option>
+                            </select>
+                            <select id="new-merchant-rule-purchase-type">
+                                <option value="single">Single default</option>
+                                <option value="joint">Joint default</option>
+                            </select>
+                            <button id="add-merchant-rule-btn">Add Rule</button>
+                        </div>
+
+                        <div id="merchant-rules-list" class="merchant-rules-list"></div>
+                        <p id="merchant-rules-status" class="backup-status">No pending merchant rule edits.</p>
+                        <div class="settings-actions">
+                            <button id="save-merchant-rules-btn">Save Merchant Rules</button>
+                            <button id="discard-merchant-rules-btn" class="secondary-button">Discard Unsaved Changes</button>
+                        </div>
+                    </section>
+
                     <section class="panel settings-card recurring-manager-card">
                         <p class="panel-kicker">Automation</p>
                         <h3>Recurring Transactions</h3>

@@ -895,6 +895,7 @@ table,
 }
 
 .category-manager-card,
+.merchant-rules-card,
 .recurring-manager-card,
 .backup-card,
 .demo-card,
@@ -1111,6 +1112,38 @@ table,
 
 .calc-wide {
     grid-column: span 2;
+}
+
+.merchant-rule-add-form,
+.merchant-rule-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.5fr) minmax(150px, 1fr) minmax(150px, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.merchant-rule-add-form {
+    margin-top: 18px;
+}
+
+.merchant-rules-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.merchant-rule-row {
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-alt);
+}
+
+.merchant-rule-row input,
+.merchant-rule-row select,
+.merchant-rule-add-form input,
+.merchant-rule-add-form select {
+    width: 100%;
 }
 
 .budget-goal-form {
@@ -2036,7 +2069,11 @@ body.dark-mode .budget-goal-form input,
 body.dark-mode .import-column-controls select,
 body.dark-mode .import-preview-select,
 body.dark-mode .sync-auth-form input,
-body.dark-mode .category-row input {
+body.dark-mode .category-row input,
+body.dark-mode .merchant-rule-row input,
+body.dark-mode .merchant-rule-row select,
+body.dark-mode .merchant-rule-add-form input,
+body.dark-mode .merchant-rule-add-form select {
     background: rgba(9, 19, 31, 0.76);
     color: var(--text);
 }
@@ -2075,6 +2112,8 @@ body.dark-mode .nav-btn.active {
     }
 
     .category-add-form,
+    .merchant-rule-add-form,
+    .merchant-rule-row,
     .recurring-add-form,
     .sync-auth-form,
     .category-row,
