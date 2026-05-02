@@ -1692,6 +1692,51 @@ table,
     margin-bottom: 16px;
 }
 
+.transaction-activity-panel {
+    margin-bottom: 18px;
+}
+
+.transaction-activity-list,
+.transaction-history-list {
+    display: grid;
+    gap: 12px;
+}
+
+.transaction-activity-item,
+.transaction-history-item {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface-alt);
+}
+
+.transaction-activity-item strong,
+.transaction-history-item strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.transaction-activity-item span,
+.transaction-history-item span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.95rem;
+}
+
+.transaction-activity-item small,
+.transaction-history-item small {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.transaction-history-item p {
+    margin-top: 8px;
+    color: var(--text);
+    font-size: 0.92rem;
+}
+
 .transaction-search-panel {
     display: grid;
     grid-template-columns: minmax(180px, 1.3fr) minmax(150px, 1fr) minmax(140px, 0.9fr) minmax(130px, 0.8fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) auto;
@@ -1900,6 +1945,11 @@ td {
 
 .edit-btn {
     background: var(--blue);
+}
+
+.history-btn {
+    background: rgba(47, 111, 237, 0.14);
+    color: var(--blue-deep);
 }
 
 .delete-btn {

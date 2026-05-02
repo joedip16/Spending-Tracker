@@ -19,6 +19,7 @@ let budgetCategories = null;
 let merchantRules = [];
 let merchantRulesDraft = null;
 let merchantRulesDirty = false;
+let transactionActivityLog = [];
 let recurringTransactions = [];
 let skippedRecurringOccurrences = [];
 let budgetGoals = null;
@@ -130,6 +131,7 @@ const DEFAULT_BUDGET_CATEGORIES = {
 
 const DEMO_MODE_STORAGE_KEY = 'demoModeActive';
 const PLAID_PENDING_LINK_TOKEN_KEY = 'plaidPendingLinkToken';
+const MAX_TRANSACTION_ACTIVITY = 500;
 
 const DEMO_PROFILE = {
     name: 'Demo User',
@@ -374,6 +376,36 @@ function normalizeMerchantRules(rules) {
             purchaseType: rule?.purchaseType === 'joint' ? 'joint' : 'single'
         }))
         .filter(rule => rule.pattern);
+}
+
+function generateTransactionId() {
+    return `txn-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeStoredTransaction(txn) {
+    return {
+        ...txn,
+        id: String(txn?.id || generateTransactionId())
+    };
+}
+
+function normalizeStoredTransactions(list) {
+    return (Array.isArray(list) ? list : []).map(normalizeStoredTransaction);
+}
+
+function normalizeTransactionActivityLog(entries) {
+    return (Array.isArray(entries) ? entries : [])
+        .map((entry, index) => ({
+            id: String(entry?.id || `activity-${index}-${Date.now()}`),
+            transactionId: String(entry?.transactionId || '').trim(),
+            action: ['imported', 'added', 'edited', 'recategorized', 'deleted'].includes(entry?.action) ? entry.action : 'edited',
+            timestamp: typeof entry?.timestamp === 'string' ? entry.timestamp : new Date().toISOString(),
+            title: String(entry?.title || '').trim(),
+            description: String(entry?.description || '').trim(),
+            transactionLabel: String(entry?.transactionLabel || '').trim()
+        }))
+        .filter(entry => entry.transactionId || entry.action === 'deleted')
+        .slice(0, MAX_TRANSACTION_ACTIVITY);
 }
 
 function loadBudgetCategories() {
@@ -1161,6 +1193,7 @@ function buildAppStatePayload() {
         manualTransactions,
         budgetCategories: normalizeBudgetCategories(budgetCategories),
         merchantRules: normalizeMerchantRules(merchantRules),
+        transactionActivityLog: normalizeTransactionActivityLog(transactionActivityLog),
         recurringTransactions,
         skippedRecurringOccurrences,
         currentSnapshotTab,
@@ -1254,6 +1287,8 @@ function buildBackupCsv(payload) {
         ...data.importedTransactions.map(txn => ['importedTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '', txn.externalTransactionId || '']),
         ['manualTransactions', 'date', 'originalCategory', 'adjustedAmount', 'category', 'rawAmount', 'recurringId', 'recurringOccurrence', 'note', 'externalTransactionId'],
         ...data.manualTransactions.map(txn => ['manualTransactions', txn.date, txn.originalCategory, txn.adjustedAmount, txn.category, txn.rawAmount, txn.recurringId || '', txn.recurringOccurrence || '', txn.note || '', txn.externalTransactionId || '']),
+        ['transactionActivity', 'transactionId', 'action', 'timestamp', 'title', 'description', 'transactionLabel'],
+        ...normalizeTransactionActivityLog(data.transactionActivityLog).map(entry => ['transactionActivity', entry.transactionId, entry.action, entry.timestamp, entry.title || '', entry.description || '', entry.transactionLabel || '']),
         ['budgetCategory', 'type', 'name', 'keywords', 'monthlyGoal', 'defaultPurchaseType'],
         ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || '', category.defaultPurchaseType || 'single'])),
         ['merchantRule', 'pattern', 'category', 'purchaseType'],
@@ -1310,6 +1345,7 @@ function parseBackupCsv(csvText) {
         manualTransactions: [],
         budgetCategories: { income: [], needs: [], wants: [] },
         merchantRules: [],
+        transactionActivityLog: [],
         budgetGoals: { ...DEFAULT_BUDGET_GOALS },
         recurringTransactions: [],
         skippedRecurringOccurrences: [],
@@ -1337,6 +1373,15 @@ function parseBackupCsv(csvText) {
             data.importedTransactions.push(parseBackupTransaction(row));
         } else if (section === 'manualTransactions' && row[1] !== 'date') {
             data.manualTransactions.push(parseBackupTransaction(row));
+        } else if (section === 'transactionActivity' && row[1] !== 'transactionId') {
+            data.transactionActivityLog.push({
+                transactionId: row[1] || '',
+                action: row[2] || 'edited',
+                timestamp: row[3] || '',
+                title: row[4] || '',
+                description: row[5] || '',
+                transactionLabel: row[6] || ''
+            });
         } else if (section === 'budgetCategory' && row[1] !== 'type') {
             const type = row[1];
             if (data.budgetCategories[type]) {
@@ -1383,10 +1428,11 @@ function validateBackupPayload(payload) {
     return {
         profile: { ...getDefaultProfile(), ...(data.profile || {}) },
         darkMode: Boolean(data.darkMode),
-        importedTransactions: data.importedTransactions,
-        manualTransactions: data.manualTransactions,
+        importedTransactions: normalizeStoredTransactions(data.importedTransactions),
+        manualTransactions: normalizeStoredTransactions(data.manualTransactions),
         budgetCategories: normalizeBudgetCategories(data.budgetCategories),
         merchantRules: normalizeMerchantRules(data.merchantRules),
+        transactionActivityLog: normalizeTransactionActivityLog(data.transactionActivityLog),
         budgetGoals: normalizeBudgetGoals(data.budgetGoals),
         recurringTransactions: Array.isArray(data.recurringTransactions) ? data.recurringTransactions : [],
         skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
@@ -1438,6 +1484,7 @@ function applyRestoredAppState(restoredData) {
         currentProfile = restoredData.profile;
         importedTransactions = restoredData.importedTransactions;
         manualTransactions = restoredData.manualTransactions;
+        transactionActivityLog = normalizeTransactionActivityLog(restoredData.transactionActivityLog);
         budgetCategories = restoredData.budgetCategories;
         categoryManagerDraft = normalizeBudgetCategories(budgetCategories);
         categoryManagerDirty = false;
@@ -1467,6 +1514,7 @@ function applyRestoredAppState(restoredData) {
         syncBudgetGoalForm();
         updateBudgetGoalTargets();
         renderRecurringManager();
+        renderTransactionActivityFeed();
         updateTransactions();
         switchSnapshotTab(currentSnapshotTab);
     } finally {
@@ -2466,6 +2514,7 @@ function buildAppStatePayloadFromRestored(restoredData) {
         manualTransactions: restoredData.manualTransactions,
         budgetCategories: restoredData.budgetCategories,
         merchantRules: restoredData.merchantRules,
+        transactionActivityLog: restoredData.transactionActivityLog,
         recurringTransactions: restoredData.recurringTransactions,
         skippedRecurringOccurrences: restoredData.skippedRecurringOccurrences,
         currentSnapshotTab: restoredData.currentSnapshotTab
@@ -2596,6 +2645,7 @@ function clearLocalAppData() {
             'budgetGoals',
             'budgetCategories',
             'merchantRules',
+            'transactionActivityLog',
             'recurringTransactions',
             'skippedRecurringOccurrences',
             'importedTransactions',
@@ -2609,6 +2659,7 @@ function clearLocalAppData() {
         allTransactions = [];
         importedTransactions = [];
         manualTransactions = [];
+        transactionActivityLog = [];
         monthlyData = {};
         totalIncomeSources = {};
         totalNeedsSubcategories = {};
@@ -2649,6 +2700,7 @@ function clearLocalAppData() {
         renderCategoryManager();
         renderMerchantRuleManager();
         renderRecurringManager();
+        renderTransactionActivityFeed();
         resetCalculatedOutput();
         syncResultsVisibility();
         displayTransactions();
@@ -3105,6 +3157,7 @@ function saveState(description = "Change") {
     const state = {
         imported: JSON.parse(JSON.stringify(importedTransactions)),
         manual: JSON.parse(JSON.stringify(manualTransactions)),
+        activity: JSON.parse(JSON.stringify(transactionActivityLog)),
         description
     };
 
@@ -3133,6 +3186,7 @@ function redo() {
 function restoreState(state) {
     importedTransactions = state.imported;
     manualTransactions = state.manual;
+    transactionActivityLog = normalizeTransactionActivityLog(state.activity);
     saveAllTransactions();
     updateTransactions();
 }
@@ -3187,10 +3241,11 @@ function loadPersistedData() {
     localStateUpdatedAt = localStorage.getItem('appStateUpdatedAt') || '';
 
     const savedImported = localStorage.getItem('importedTransactions');
-    if (savedImported) importedTransactions = JSON.parse(savedImported);
+    if (savedImported) importedTransactions = normalizeStoredTransactions(JSON.parse(savedImported));
 
     const savedManual = localStorage.getItem('manualTransactions');
-    if (savedManual) manualTransactions = JSON.parse(savedManual);
+    if (savedManual) manualTransactions = normalizeStoredTransactions(JSON.parse(savedManual));
+    transactionActivityLog = normalizeTransactionActivityLog(JSON.parse(localStorage.getItem('transactionActivityLog') || '[]'));
 
     applyRecurringTransactions(false);
 
@@ -3207,6 +3262,7 @@ function loadPersistedData() {
     renderRecurringManager();
     setDemoModeStatus();
     syncTransactionsListCollapsedState();
+    renderTransactionActivityFeed();
 
     if (allTransactions.length > 0) updateTransactions();
 
@@ -3227,8 +3283,11 @@ function setDarkMode(isDark) {
 
 // Save both sets
 function saveAllTransactions() {
+    importedTransactions = normalizeStoredTransactions(importedTransactions);
+    manualTransactions = normalizeStoredTransactions(manualTransactions);
     localStorage.setItem('importedTransactions', JSON.stringify(importedTransactions));
     localStorage.setItem('manualTransactions', JSON.stringify(manualTransactions));
+    localStorage.setItem('transactionActivityLog', JSON.stringify(normalizeTransactionActivityLog(transactionActivityLog)));
     queueCloudSync();
 }
 
@@ -3291,6 +3350,7 @@ function updateTransactions() {
     deriveAvailableYears();
     syncResultsVisibility();
     renderHomeDashboard();
+    renderTransactionActivityFeed();
 
     if (!allTransactions.length) return;
 
@@ -3488,6 +3548,97 @@ function getTransactionPurchaseType(txn) {
     if (txn?.purchaseType === 'joint') return 'joint';
     if (txn?.purchaseType === 'single') return 'single';
     return /\(joint\)$/i.test(String(txn?.originalCategory || '')) ? 'joint' : 'single';
+}
+
+function getTransactionDisplayLabel(txn) {
+    const description = getBaseDescription(txn?.originalCategory || 'Transaction');
+    const amount = Number(txn?.adjustedAmount || 0);
+    return `${description} on ${txn?.date || 'unknown date'} for ${getAmountDisplay(amount).text}`;
+}
+
+function describeTransactionChanges(oldTxn, newTxn) {
+    const changes = [];
+    if (oldTxn?.date !== newTxn?.date) changes.push('date');
+    if (getBaseDescription(oldTxn?.originalCategory) !== getBaseDescription(newTxn?.originalCategory)) changes.push('description');
+    if (getTransactionPurchaseType(oldTxn) !== getTransactionPurchaseType(newTxn)) changes.push('single/joint');
+    if (Number(oldTxn?.adjustedAmount || 0) !== Number(newTxn?.adjustedAmount || 0)) changes.push('amount');
+    if (normalizeTransactionNote(oldTxn?.note) !== normalizeTransactionNote(newTxn?.note)) changes.push('note');
+    return changes;
+}
+
+function saveTransactionActivityLog() {
+    transactionActivityLog = normalizeTransactionActivityLog(transactionActivityLog);
+    localStorage.setItem('transactionActivityLog', JSON.stringify(transactionActivityLog));
+    queueCloudSync();
+}
+
+function recordTransactionActivity(transaction, action, title, description = '') {
+    const normalizedTransaction = normalizeStoredTransaction(transaction || {});
+    transactionActivityLog.unshift({
+        id: `activity-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        transactionId: normalizedTransaction.id,
+        action,
+        timestamp: new Date().toISOString(),
+        title,
+        description,
+        transactionLabel: getTransactionDisplayLabel(normalizedTransaction)
+    });
+    transactionActivityLog = transactionActivityLog.slice(0, MAX_TRANSACTION_ACTIVITY);
+    saveTransactionActivityLog();
+}
+
+function getTransactionActivityEntries(transactionId) {
+    const lookup = String(transactionId || '').trim();
+    return transactionActivityLog.filter(entry => entry.transactionId === lookup);
+}
+
+function formatActivityTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? 'Unknown time' : date.toLocaleString();
+}
+
+function renderTransactionActivityFeed() {
+    const container = document.getElementById('transaction-activity-list');
+    if (!container) return;
+
+    if (!transactionActivityLog.length) {
+        container.innerHTML = '<p class="panel-copy">No transaction activity yet. New imports, edits, recategorizations, and deletions will appear here.</p>';
+        return;
+    }
+
+    container.innerHTML = transactionActivityLog.slice(0, 12).map(entry => `
+        <div class="transaction-activity-item">
+            <strong>${escapeHtml(entry.title || 'Transaction updated')}</strong>
+            <span>${escapeHtml(entry.transactionLabel || 'Transaction')}</span>
+            <small>${escapeHtml(formatActivityTimestamp(entry.timestamp))}${entry.description ? ` · ${escapeHtml(entry.description)}` : ''}</small>
+        </div>
+    `).join('');
+}
+
+function openTransactionHistoryModal(index) {
+    const txn = allTransactions[index];
+    if (!txn) return;
+
+    const title = document.getElementById('transaction-history-title');
+    const list = document.getElementById('transaction-history-list');
+    if (!title || !list) return;
+
+    const entries = getTransactionActivityEntries(txn.id);
+    title.textContent = `History for ${getBaseDescription(txn.originalCategory)}`;
+    if (!entries.length) {
+        list.innerHTML = '<p class="panel-copy">No recorded history yet for this transaction. Older transactions may start showing history only after their next change.</p>';
+    } else {
+        list.innerHTML = entries.map(entry => `
+            <div class="transaction-history-item">
+                <strong>${escapeHtml(entry.title || 'Transaction updated')}</strong>
+                <span>${escapeHtml(entry.transactionLabel || getTransactionDisplayLabel(txn))}</span>
+                <small>${escapeHtml(formatActivityTimestamp(entry.timestamp))}</small>
+                ${entry.description ? `<p>${escapeHtml(entry.description)}</p>` : ''}
+            </div>
+        `).join('');
+    }
+
+    document.getElementById('transaction-history-modal').style.display = 'flex';
 }
 
 function withPurchaseTypeDescription(description, purchaseType) {
@@ -4432,14 +4583,18 @@ function askDuplicateTransactionChoice(count = 1) {
 
 function overwriteDuplicateTransaction(duplicate, txn) {
     if (!duplicate) return false;
+    const replacement = {
+        ...txn,
+        id: duplicate.transaction?.id || txn.id || generateTransactionId()
+    };
 
     if (duplicate.collection === 'imported') {
-        importedTransactions[duplicate.index] = txn;
+        importedTransactions[duplicate.index] = replacement;
         return true;
     }
 
     if (duplicate.collection === 'manual') {
-        manualTransactions[duplicate.index] = txn;
+        manualTransactions[duplicate.index] = replacement;
         return true;
     }
 
@@ -4988,6 +5143,7 @@ function confirmImportPreview() {
             const baseDescription = getBaseDescription(txn.originalCategory);
             const finalDescription = txn.purchaseType === 'joint' ? `${baseDescription} (joint)` : baseDescription;
             return {
+                id: txn.id || generateTransactionId(),
                 date: txn.date,
                 originalCategory: finalDescription,
                 adjustedAmount: txn.adjustedAmount,
@@ -5025,10 +5181,21 @@ function confirmImportPreview() {
             const duplicate = findDuplicateTransaction(txn);
             if (!overwriteDuplicateTransaction(duplicate, txn)) {
                 importedTransactions.push(txn);
+                recordTransactionActivity(txn, 'imported', 'Transaction imported', `Imported from ${pendingImportFileName || 'file upload'}`);
+            } else {
+                const existingTxn = { ...txn, id: duplicate.transaction?.id || txn.id };
+                const changedFields = duplicate.transaction ? describeTransactionChanges(duplicate.transaction, existingTxn) : [];
+                if (duplicate.transaction?.category !== txn.category) {
+                    recordTransactionActivity(existingTxn, 'recategorized', 'Imported transaction recategorized', `${duplicate.transaction.category} → ${txn.category}`);
+                }
+                recordTransactionActivity(existingTxn, 'edited', 'Imported transaction overwrote duplicate', `${changedFields.length ? `Changed ${changedFields.join(', ')}. ` : ''}Imported from ${pendingImportFileName || 'file upload'}`);
             }
         });
     } else {
         importedTransactions = [...importedTransactions, ...selectedTransactions];
+        selectedTransactions.forEach(txn => {
+            recordTransactionActivity(txn, 'imported', 'Transaction imported', `Imported from ${pendingImportFileName || 'file upload'}`);
+        });
     }
 
     applyLastUsedPurchaseTypeDefaults(selectedPurchaseTypeDefaults);
@@ -5100,6 +5267,7 @@ function displayTransactions() {
             <td class="${amountDisplay.className}">${amountDisplay.text}</td>
             <td>${txn.category.charAt(0).toUpperCase() + txn.category.slice(1)}</td>
             <td>
+                <button class="action-btn history-btn" data-index="${i}">History</button>
                 <button class="action-btn edit-btn" data-index="${i}">Edit</button>
                 <button class="action-btn delete-btn" data-index="${i}">Delete</button>
             </td>
@@ -5107,6 +5275,9 @@ function displayTransactions() {
         tbody.appendChild(tr);
     });
 
+    document.querySelectorAll('.history-btn').forEach(btn => {
+        btn.addEventListener('click', () => openTransactionHistoryModal(parseInt(btn.dataset.index, 10)));
+    });
     document.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', () => openEditModal(parseInt(btn.dataset.index)));
     });
@@ -5155,6 +5326,7 @@ function deleteTransaction(index) {
         if (manualIdx !== -1) manualTransactions.splice(manualIdx, 1);
     }
 
+    recordTransactionActivity(txn, 'deleted', 'Transaction deleted');
     saveAllTransactions();
     updateTransactions();
 }
@@ -5193,6 +5365,7 @@ document.getElementById('save-edit').addEventListener('click', () => {
     }
 
     const updatedTxn = {
+        id: oldTxn.id || generateTransactionId(),
         date,
         originalCategory: finalDescription,
         adjustedAmount: amount,
@@ -5221,6 +5394,11 @@ document.getElementById('save-edit').addEventListener('click', () => {
         originalCategory: finalDescription,
         purchaseType
     }]);
+    const changedFields = describeTransactionChanges(oldTxn, updatedTxn);
+    if (oldTxn.category !== updatedTxn.category) {
+        recordTransactionActivity(updatedTxn, 'recategorized', 'Transaction recategorized', `${oldTxn.category} → ${updatedTxn.category}`);
+    }
+    recordTransactionActivity(updatedTxn, 'edited', 'Transaction edited', changedFields.length ? `Changed ${changedFields.join(', ')}.` : '');
     saveAllTransactions();
     updateTransactions();
     document.getElementById('edit-modal').style.display = 'none';
@@ -5608,6 +5786,7 @@ document.getElementById('save-manual').addEventListener('click', () => {
     }
 
     const newTxn = {
+        id: generateTransactionId(),
         date,
         originalCategory: finalDescription,
         adjustedAmount: amount,
@@ -5622,9 +5801,17 @@ document.getElementById('save-manual').addEventListener('click', () => {
 
     const duplicate = findDuplicateTransaction(newTxn);
     if (duplicate && askDuplicateTransactionChoice() === 'overwrite') {
+        const duplicateTxn = duplicate.transaction;
         overwriteDuplicateTransaction(duplicate, newTxn);
+        const loggedTxn = { ...newTxn, id: duplicateTxn?.id || newTxn.id };
+        const changedFields = duplicateTxn ? describeTransactionChanges(duplicateTxn, loggedTxn) : [];
+        if (duplicateTxn?.category !== newTxn.category) {
+            recordTransactionActivity(loggedTxn, 'recategorized', 'Manual transaction recategorized', `${duplicateTxn.category} → ${newTxn.category}`);
+        }
+        recordTransactionActivity(loggedTxn, 'edited', 'Manual transaction overwrote duplicate', changedFields.length ? `Changed ${changedFields.join(', ')}.` : '');
     } else {
         manualTransactions.unshift(newTxn);
+        recordTransactionActivity(newTxn, 'added', 'Manual transaction added');
     }
 
     applyLastUsedPurchaseTypeDefaults([{
@@ -5842,6 +6029,9 @@ function attachNavigationListeners() {
     document.getElementById('edit-profile-btn').addEventListener('click', () => {
         switchPage('settings');
         openProfileModal(false);
+    });
+    document.getElementById('close-transaction-history').addEventListener('click', () => {
+        document.getElementById('transaction-history-modal').style.display = 'none';
     });
 }
 

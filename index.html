@@ -378,6 +378,16 @@
                         <button id="clear-transaction-filters" class="secondary-button">Clear Filters</button>
                     </div>
                     <div id="transaction-meta" class="transaction-meta"></div>
+                    <section class="panel transaction-activity-panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Trust Log</p>
+                                <h3>Recent Transaction Activity</h3>
+                                <p class="panel-copy">See when transactions were imported, edited, recategorized, or removed.</p>
+                            </div>
+                        </div>
+                        <div id="transaction-activity-list" class="transaction-activity-list"></div>
+                    </section>
                     <div id="transactions-container">
                         <div class="table-wrapper">
                             <table id="transactions">
@@ -816,14 +826,22 @@
         </div>
     </div>
 
+    <div id="transaction-history-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); justify-content:center; align-items:center; z-index:100; flex-direction:column;">
+        <div style="background:white; padding:30px; border-radius:12px; width:90%; max-width:560px; box-shadow:0 10px 30px rgba(0,0,0,0.3);">
+            <h3 id="transaction-history-title">Transaction History</h3>
+            <div id="transaction-history-list" class="transaction-history-list"></div>
+            <button id="close-transaction-history" style="background:#95a5a6; margin-top:16px;">Close</button>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-check-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script src="firebase-config.js?v=20260502-forecast-view"></script>
+    <script src="firebase-config.js?v=20260502-transaction-history"></script>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260502-forecast-view"></script>
+    <script src="script.js?v=20260502-transaction-history"></script>
 </body>
 </html>

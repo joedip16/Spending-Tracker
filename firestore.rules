@@ -38,6 +38,7 @@ service cloud.firestore {
           'manualTransactions',
           'budgetCategories',
           'merchantRules',
+          'transactionActivityLog',
           'recurringTransactions',
           'skippedRecurringOccurrences',
           'currentSnapshotTab',
@@ -50,6 +51,7 @@ service cloud.firestore {
         && data.manualTransactions is list
         && data.budgetCategories is map
         && data.merchantRules is list
+        && data.transactionActivityLog is list
         && data.recurringTransactions is list
         && data.skippedRecurringOccurrences is list
         && data.currentSnapshotTab is string

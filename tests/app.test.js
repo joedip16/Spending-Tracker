@@ -995,3 +995,78 @@ test('forecast cards project current month pace and yearly pace', () => {
   assert.match(forecast.cards[0].title, /\$1,227\.27 projected/);
   assert.match(forecast.cards[2].metric, /above target|needed to reach target/);
 });
+
+test('transaction activity log records and filters transaction history', () => {
+  const app = loadApp();
+  const txn = {
+    id: 'txn-1',
+    date: '04/22/2026',
+    originalCategory: 'Eating Out',
+    adjustedAmount: -24.5,
+    category: 'wants',
+    rawAmount: -24.5
+  };
+
+  app.run(`
+    transactionActivityLog = [];
+    importedTransactions = [];
+    manualTransactions = [];
+  `);
+
+  app.context.recordTransactionActivity(txn, 'imported', 'Transaction imported', 'Imported from April CSV');
+  app.context.recordTransactionActivity({ ...txn, category: 'needs' }, 'recategorized', 'Transaction recategorized', 'wants → needs');
+
+  const entries = app.context.getTransactionActivityEntries('txn-1');
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0].action, 'recategorized');
+  assert.equal(entries[1].action, 'imported');
+});
+
+test('backup validation and sync payload preserve transaction activity log', () => {
+  const app = loadApp();
+  const activity = [{
+    transactionId: 'txn-1',
+    action: 'deleted',
+    timestamp: '2026-04-22T16:00:00.000Z',
+    title: 'Transaction deleted',
+    description: 'Removed from review',
+    transactionLabel: 'Eating Out on 04/22/2026 for -$24.50'
+  }];
+
+  const validated = app.context.validateBackupPayload({
+    data: {
+      profile: { name: 'Tester' },
+      importedTransactions: [],
+      manualTransactions: [],
+      budgetGoals: { needs: 50, wants: 30, savings: 20 },
+      budgetCategories: {},
+      merchantRules: [],
+      transactionActivityLog: activity,
+      recurringTransactions: [],
+      skippedRecurringOccurrences: [],
+      currentSnapshotTab: 'overview',
+      updatedAt: '2026-04-22T16:00:00.000Z'
+    }
+  });
+
+  assert.equal(validated.transactionActivityLog.length, 1);
+  assert.equal(validated.transactionActivityLog[0].action, 'deleted');
+
+  app.run(`
+    currentProfile = { name: 'Tester', isSharedBudget: false, householdName: '' };
+    budgetGoals = { needs: 50, wants: 30, savings: 20 };
+    budgetCategories = cloneDefaultCategories();
+    merchantRules = [];
+    transactionActivityLog = __testValue;
+    recurringTransactions = [];
+    skippedRecurringOccurrences = [];
+    importedTransactions = [];
+    manualTransactions = [];
+    currentSnapshotTab = 'overview';
+    localStateUpdatedAt = '';
+  `, activity);
+
+  const payload = app.context.buildValidatedCloudPayload();
+  assert.equal(payload.transactionActivityLog.length, 1);
+  assert.equal(payload.transactionActivityLog[0].title, 'Transaction deleted');
+});
