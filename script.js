@@ -894,7 +894,7 @@ function getCurrentDateInputValue() {
 }
 
 function isValidRecurringFrequency(frequency) {
-    return ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(frequency);
+    return ['weekly', 'biweekly', 'monthly', 'semimonthly', 'month-end', 'quarterly', 'yearly', 'custom'].includes(frequency);
 }
 
 function formatRecurringFrequency(frequency) {
@@ -902,10 +902,25 @@ function formatRecurringFrequency(frequency) {
         weekly: 'Weekly',
         biweekly: 'Every 2 weeks',
         monthly: 'Monthly',
+        semimonthly: 'Twice monthly',
+        'month-end': 'Last day of month',
         quarterly: 'Quarterly',
-        yearly: 'Yearly'
+        yearly: 'Yearly',
+        custom: 'Custom interval'
     };
     return labels[frequency] || labels.monthly;
+}
+
+function normalizeRecurringIntervalUnit(unit) {
+    return ['weeks', 'months', 'years'].includes(unit) ? unit : 'months';
+}
+
+function getRecurringIntervalLabel(item) {
+    if (item.frequency !== 'custom') return formatRecurringFrequency(item.frequency);
+    const count = Math.max(parseInt(item.intervalCount, 10) || 1, 1);
+    const unit = normalizeRecurringIntervalUnit(item.intervalUnit);
+    const singularUnit = unit.replace(/s$/, '');
+    return `Every ${count} ${count === 1 ? singularUnit : unit}`;
 }
 
 function getRecurringStartDate(item) {
@@ -919,8 +934,29 @@ function getRecurringStartDate(item) {
     const year = parseInt(monthMatch[1], 10);
     const month = parseInt(monthMatch[2], 10);
     const lastDay = new Date(year, month, 0).getDate();
-    const day = Math.min(Math.max(parseInt(item.dayOfMonth, 10) || 1, 1), lastDay);
+    const day = item.frequency === 'month-end'
+        ? lastDay
+        : Math.min(Math.max(parseInt(item.dayOfMonth, 10) || 1, 1), lastDay);
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function normalizeRecurringTransactions(items) {
+    return (Array.isArray(items) ? items : [])
+        .map(item => ({
+            id: String(item.id || ''),
+            description: String(item.description || '').trim(),
+            amount: Number(item.amount),
+            category: ['income', 'needs', 'wants', 'uncategorized'].includes(item.category) ? item.category : 'needs',
+            purchaseType: item.purchaseType === 'joint' ? 'joint' : 'single',
+            frequency: isValidRecurringFrequency(item.frequency) ? item.frequency : 'monthly',
+            dayOfMonth: Math.min(Math.max(parseInt(item.dayOfMonth, 10) || 1, 1), 31),
+            secondDayOfMonth: Math.min(Math.max(parseInt(item.secondDayOfMonth, 10) || 15, 1), 31),
+            intervalCount: Math.min(Math.max(parseInt(item.intervalCount, 10) || 1, 1), 24),
+            intervalUnit: normalizeRecurringIntervalUnit(item.intervalUnit),
+            startMonth: /^\d{4}-\d{2}$/.test(String(item.startMonth || '')) ? item.startMonth : getCurrentMonthInputValue(),
+            startDate: getRecurringStartDate(item)
+        }))
+        .filter(item => item.id && item.description && !Number.isNaN(item.amount));
 }
 
 function loadRecurringTransactions() {
@@ -941,19 +977,7 @@ function loadRecurringTransactions() {
     }
 
     try {
-        recurringTransactions = JSON.parse(savedRecurring)
-            .map(item => ({
-                id: String(item.id || ''),
-                description: String(item.description || '').trim(),
-                amount: Number(item.amount),
-                category: ['income', 'needs', 'wants', 'uncategorized'].includes(item.category) ? item.category : 'needs',
-                purchaseType: item.purchaseType === 'joint' ? 'joint' : 'single',
-                frequency: isValidRecurringFrequency(item.frequency) ? item.frequency : 'monthly',
-                dayOfMonth: Math.min(Math.max(parseInt(item.dayOfMonth, 10) || 1, 1), 31),
-                startMonth: /^\d{4}-\d{2}$/.test(String(item.startMonth || '')) ? item.startMonth : getCurrentMonthInputValue(),
-                startDate: getRecurringStartDate(item)
-            }))
-            .filter(item => item.id && item.description && !Number.isNaN(item.amount));
+        recurringTransactions = normalizeRecurringTransactions(JSON.parse(savedRecurring));
     } catch (error) {
         recurringTransactions = [];
     }
@@ -993,11 +1017,46 @@ function getRecurringOccurrenceKeys(item) {
     const keys = [];
     let current = new Date(start.getFullYear(), start.getMonth(), start.getDate());
 
+    if (item.frequency === 'semimonthly') {
+        const firstDay = Math.min(Math.max(parseInt(item.dayOfMonth, 10) || start.getDate(), 1), 31);
+        const secondDay = Math.min(Math.max(parseInt(item.secondDayOfMonth, 10) || 15, 1), 31);
+        const orderedDays = [firstDay, secondDay].sort((a, b) => a - b);
+        const monthCursor = new Date(start.getFullYear(), start.getMonth(), 1);
+
+        while (monthCursor <= today) {
+            const year = monthCursor.getFullYear();
+            const month = monthCursor.getMonth();
+            const lastDay = new Date(year, month + 1, 0).getDate();
+            orderedDays.forEach(day => {
+                const occurrence = new Date(year, month, Math.min(day, lastDay));
+                if (occurrence >= start && occurrence <= today) {
+                    keys.push(formatDateKey(occurrence));
+                }
+            });
+            monthCursor.setMonth(monthCursor.getMonth() + 1);
+        }
+
+        return Array.from(new Set(keys)).sort();
+    }
+
     while (current <= today) {
         keys.push(formatDateKey(current));
 
         if (item.frequency === 'weekly' || item.frequency === 'biweekly') {
             current.setDate(current.getDate() + (item.frequency === 'weekly' ? 7 : 14));
+        } else if (item.frequency === 'custom') {
+            const intervalCount = Math.max(parseInt(item.intervalCount, 10) || 1, 1);
+            const intervalUnit = normalizeRecurringIntervalUnit(item.intervalUnit);
+            if (intervalUnit === 'weeks') {
+                current.setDate(current.getDate() + intervalCount * 7);
+            } else if (intervalUnit === 'years') {
+                current = addMonthsClamped(current, intervalCount * 12, preferredDay);
+            } else {
+                current = addMonthsClamped(current, intervalCount, preferredDay);
+            }
+        } else if (item.frequency === 'month-end') {
+            const nextMonth = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+            current = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0);
         } else {
             const intervalMonths = item.frequency === 'quarterly' ? 3 : item.frequency === 'yearly' ? 12 : 1;
             current = addMonthsClamped(current, intervalMonths, preferredDay);
@@ -1011,6 +1070,31 @@ function formatRecurringDate(occurrenceKey) {
     const date = parseDateKey(occurrenceKey);
     if (!date) return '';
     return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
+function updateRecurringFrequencyControls(scope = 'recurring') {
+    const frequencyInput = document.getElementById(scope === 'manual' ? 'manual-recurring-frequency' : 'recurring-frequency');
+    const dayInput = document.getElementById(scope === 'manual' ? 'manual-date' : 'recurring-day');
+    const secondDayInput = document.getElementById(scope === 'manual' ? 'manual-recurring-second-day' : 'recurring-second-day');
+    const intervalCountInput = document.getElementById(scope === 'manual' ? 'manual-recurring-interval-count' : 'recurring-interval-count');
+    const intervalUnitInput = document.getElementById(scope === 'manual' ? 'manual-recurring-interval-unit' : 'recurring-interval-unit');
+    const manualExtra = scope === 'manual' ? document.getElementById('manual-recurring-extra') : null;
+    const frequency = frequencyInput?.value || 'monthly';
+    const showSecondDay = frequency === 'semimonthly';
+    const showCustom = frequency === 'custom';
+    const isMonthEnd = frequency === 'month-end';
+
+    if (scope === 'manual') {
+        if (manualExtra) manualExtra.style.display = showSecondDay || showCustom ? 'grid' : 'none';
+        if (secondDayInput) secondDayInput.style.display = showSecondDay ? '' : 'none';
+        if (intervalCountInput) intervalCountInput.style.display = showCustom ? '' : 'none';
+        if (intervalUnitInput) intervalUnitInput.style.display = showCustom ? '' : 'none';
+    } else {
+        if (secondDayInput) secondDayInput.style.display = showSecondDay ? '' : 'none';
+        if (intervalCountInput) intervalCountInput.style.display = showCustom ? '' : 'none';
+        if (intervalUnitInput) intervalUnitInput.style.display = showCustom ? '' : 'none';
+        if (dayInput) dayInput.disabled = isMonthEnd;
+    }
 }
 
 function getRecurringOccurrenceKeyFromDate(storedDateValue) {
@@ -1091,6 +1175,7 @@ function renderRecurringManager() {
     if (startMonthInput && !startMonthInput.value) {
         startMonthInput.value = getCurrentMonthInputValue();
     }
+    updateRecurringFrequencyControls('recurring');
 
     if (recurringTransactions.length === 0) {
         container.innerHTML = '<p class="panel-copy">No recurring transactions yet. Add rent, paychecks, subscriptions, or any monthly item you want the app to remember.</p>';
@@ -1110,7 +1195,10 @@ function renderRecurringManager() {
                     <div class="recurring-detail-pills">
                         <span>${formatCategoryType(item.category)}</span>
                         <span>${item.purchaseType === 'joint' ? 'Joint' : 'Single'}</span>
-                        <span>${formatRecurringFrequency(item.frequency)}</span>
+                        <span>${getRecurringIntervalLabel(item)}</span>
+                        ${item.frequency === 'semimonthly'
+                            ? `<span>${Math.min(Math.max(parseInt(item.dayOfMonth, 10) || 1, 1), 31)} & ${Math.min(Math.max(parseInt(item.secondDayOfMonth, 10) || 15, 1), 31)} each month</span>`
+                            : ''}
                         <span>Starts ${escapeHtml(getRecurringStartDate(item))}</span>
                     </div>
                     <span>${occurrenceCount} generated transaction${occurrenceCount === 1 ? '' : 's'}</span>
@@ -1141,12 +1229,23 @@ function addRecurringTransaction() {
     const purchaseType = document.getElementById('recurring-purchase-type').value;
     const frequency = document.getElementById('recurring-frequency').value;
     const dayOfMonth = parseInt(document.getElementById('recurring-day').value, 10);
+    const secondDayOfMonth = parseInt(document.getElementById('recurring-second-day').value, 10);
+    const intervalCount = parseInt(document.getElementById('recurring-interval-count').value, 10);
+    const intervalUnit = document.getElementById('recurring-interval-unit').value;
     const startMonth = document.getElementById('recurring-start-month').value || getCurrentMonthInputValue();
     const description = descriptionInput.value.trim();
     const amount = parseFloat(amountInput.value);
 
     if (!description || Number.isNaN(amount) || !dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31) {
         alert('Please enter a description, amount, and day between 1 and 31.');
+        return;
+    }
+    if (frequency === 'semimonthly' && (!secondDayOfMonth || secondDayOfMonth < 1 || secondDayOfMonth > 31)) {
+        alert('Please enter a second monthly day between 1 and 31.');
+        return;
+    }
+    if (frequency === 'custom' && (!intervalCount || intervalCount < 1 || intervalCount > 24)) {
+        alert('Please enter a custom interval between 1 and 24.');
         return;
     }
 
@@ -1158,8 +1257,11 @@ function addRecurringTransaction() {
         purchaseType,
         frequency,
         dayOfMonth,
+        secondDayOfMonth: frequency === 'semimonthly' ? secondDayOfMonth : 15,
+        intervalCount: frequency === 'custom' ? intervalCount : 1,
+        intervalUnit: frequency === 'custom' ? normalizeRecurringIntervalUnit(intervalUnit) : 'months',
         startMonth,
-        startDate: getRecurringStartDate({ startMonth, dayOfMonth })
+        startDate: getRecurringStartDate({ startMonth, dayOfMonth, frequency })
     });
     saveRecurringTransactions();
 
@@ -1169,7 +1271,11 @@ function addRecurringTransaction() {
     document.getElementById('recurring-purchase-type').value = 'single';
     document.getElementById('recurring-frequency').value = 'monthly';
     document.getElementById('recurring-day').value = '1';
+    document.getElementById('recurring-second-day').value = '15';
+    document.getElementById('recurring-interval-count').value = '2';
+    document.getElementById('recurring-interval-unit').value = 'weeks';
     document.getElementById('recurring-start-month').value = getCurrentMonthInputValue();
+    updateRecurringFrequencyControls('recurring');
 
     applyRecurringTransactions(true);
 }
@@ -1293,8 +1399,8 @@ function buildBackupCsv(payload) {
         ...Object.entries(data.budgetCategories).flatMap(([type, categories]) => categories.map(category => ['budgetCategory', type, category.name, category.keywords.join('|'), category.goal || '', category.defaultPurchaseType || 'single'])),
         ['merchantRule', 'pattern', 'category', 'purchaseType'],
         ...normalizeMerchantRules(data.merchantRules).map(rule => ['merchantRule', rule.pattern, rule.category, rule.purchaseType || 'single']),
-        ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate'],
-        ...data.recurringTransactions.map(item => ['recurringTransaction', item.id, item.description, item.amount, item.category, item.purchaseType, item.frequency || 'monthly', item.dayOfMonth, item.startMonth || '', item.startDate || '']),
+        ['recurringTransaction', 'id', 'description', 'amount', 'category', 'purchaseType', 'frequency', 'dayOfMonth', 'startMonth', 'startDate', 'secondDayOfMonth', 'intervalCount', 'intervalUnit'],
+        ...data.recurringTransactions.map(item => ['recurringTransaction', item.id, item.description, item.amount, item.category, item.purchaseType, item.frequency || 'monthly', item.dayOfMonth, item.startMonth || '', item.startDate || '', item.secondDayOfMonth || '', item.intervalCount || '', item.intervalUnit || '']),
         ['skippedRecurringOccurrence', 'key'],
         ...data.skippedRecurringOccurrences.map(key => ['skippedRecurringOccurrence', key])
     ];
@@ -1408,7 +1514,10 @@ function parseBackupCsv(csvText) {
                 frequency: row[6] || 'monthly',
                 dayOfMonth: parseInt(row[7], 10) || 1,
                 startMonth: row[8] || '',
-                startDate: row[9] || ''
+                startDate: row[9] || '',
+                secondDayOfMonth: parseInt(row[10], 10) || 15,
+                intervalCount: parseInt(row[11], 10) || 1,
+                intervalUnit: normalizeRecurringIntervalUnit(row[12])
             });
         } else if (section === 'skippedRecurringOccurrence' && row[1] !== 'key') {
             data.skippedRecurringOccurrences.push(row[1] || '');
@@ -1434,7 +1543,7 @@ function validateBackupPayload(payload) {
         merchantRules: normalizeMerchantRules(data.merchantRules),
         transactionActivityLog: normalizeTransactionActivityLog(data.transactionActivityLog),
         budgetGoals: normalizeBudgetGoals(data.budgetGoals),
-        recurringTransactions: Array.isArray(data.recurringTransactions) ? data.recurringTransactions : [],
+        recurringTransactions: normalizeRecurringTransactions(data.recurringTransactions),
         skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
             ? data.skippedRecurringOccurrences.map(value => String(value))
             : [],
@@ -3342,6 +3451,10 @@ function resetManualForm() {
     document.getElementById('manual-note').value = '';
     document.getElementById('manual-recurring').checked = false;
     document.getElementById('manual-recurring-frequency').value = 'monthly';
+    document.getElementById('manual-recurring-second-day').value = '15';
+    document.getElementById('manual-recurring-interval-count').value = '2';
+    document.getElementById('manual-recurring-interval-unit').value = 'weeks';
+    updateRecurringFrequencyControls('manual');
 }
 
 // Rebuild allTransactions and refresh UI
@@ -5701,6 +5814,7 @@ function openManualForm() {
     if (!document.getElementById('manual-date').value) {
         document.getElementById('manual-date').value = getTodayInputValue();
     }
+    updateRecurringFrequencyControls('manual');
     populateManualDescriptionOptions();
     updateManualDescriptionInput();
     document.getElementById('manual-desc-select').focus();
@@ -5719,6 +5833,9 @@ document.getElementById('manual-desc-select').addEventListener('change', () => {
 document.getElementById('manual-desc').addEventListener('input', applyManualCategorySuggestion);
 document.getElementById('manual-category').addEventListener('change', event => {
     normalizeManualAmountSign(event.target.value);
+});
+document.getElementById('manual-recurring-frequency').addEventListener('change', () => {
+    updateRecurringFrequencyControls('manual');
 });
 
 document.getElementById('cancel-manual').addEventListener('click', () => {
@@ -5746,6 +5863,9 @@ document.getElementById('save-manual').addEventListener('click', () => {
     const note = normalizeTransactionNote(document.getElementById('manual-note').value);
     const makeRecurring = document.getElementById('manual-recurring').checked;
     const recurringFrequency = document.getElementById('manual-recurring-frequency').value;
+    const recurringSecondDay = parseInt(document.getElementById('manual-recurring-second-day').value, 10);
+    const recurringIntervalCount = parseInt(document.getElementById('manual-recurring-interval-count').value, 10);
+    const recurringIntervalUnit = document.getElementById('manual-recurring-interval-unit').value;
 
     if (!date || !desc || !amountStr || !category || !purchaseType) {
         alert('Please fill all fields.');
@@ -5754,6 +5874,14 @@ document.getElementById('save-manual').addEventListener('click', () => {
     const amount = getManualAmountValue();
     if (amount === null) {
         alert('Please enter a valid amount or calculation.');
+        return;
+    }
+    if (makeRecurring && recurringFrequency === 'semimonthly' && (!recurringSecondDay || recurringSecondDay < 1 || recurringSecondDay > 31)) {
+        alert('Please enter a second monthly day between 1 and 31 for this recurring transaction.');
+        return;
+    }
+    if (makeRecurring && recurringFrequency === 'custom' && (!recurringIntervalCount || recurringIntervalCount < 1 || recurringIntervalCount > 24)) {
+        alert('Please enter a custom interval between 1 and 24.');
         return;
     }
     document.getElementById('manual-amount').value = formatCalculatorResult(amount);
@@ -5775,6 +5903,9 @@ document.getElementById('save-manual').addEventListener('click', () => {
             purchaseType,
             frequency: recurringFrequency,
             dayOfMonth: getDayOfMonthFromStoredDate(date),
+            secondDayOfMonth: recurringFrequency === 'semimonthly' ? recurringSecondDay : 15,
+            intervalCount: recurringFrequency === 'custom' ? recurringIntervalCount : 1,
+            intervalUnit: recurringFrequency === 'custom' ? normalizeRecurringIntervalUnit(recurringIntervalUnit) : 'months',
             startMonth: recurringOccurrence.slice(0, 7),
             startDate: formatDateForInput(date)
         });
@@ -5960,6 +6091,7 @@ function attachNavigationListeners() {
         if (!confirm('Discard your unsaved merchant rule changes?')) return;
         discardMerchantRuleChanges();
     });
+    document.getElementById('recurring-frequency').addEventListener('change', () => updateRecurringFrequencyControls('recurring'));
     document.getElementById('add-recurring-btn').addEventListener('click', addRecurringTransaction);
     document.getElementById('apply-recurring-btn').addEventListener('click', () => applyRecurringTransactions(true));
     document.getElementById('export-backup-btn').addEventListener('click', exportBackup);

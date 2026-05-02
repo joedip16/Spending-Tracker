@@ -330,9 +330,21 @@
                                 <option value="monthly">Monthly</option>
                                 <option value="weekly">Weekly</option>
                                 <option value="biweekly">Every 2 weeks</option>
+                                <option value="semimonthly">Twice monthly</option>
+                                <option value="month-end">Last day of month</option>
                                 <option value="quarterly">Quarterly</option>
                                 <option value="yearly">Yearly</option>
+                                <option value="custom">Custom interval</option>
                             </select>
+                            <div id="manual-recurring-extra" class="recurring-extra-fields">
+                                <input type="number" id="manual-recurring-second-day" min="1" max="31" value="15" aria-label="Second day of month" placeholder="Second day">
+                                <input type="number" id="manual-recurring-interval-count" min="1" max="24" value="2" aria-label="Custom interval count" placeholder="Every">
+                                <select id="manual-recurring-interval-unit" aria-label="Custom interval unit">
+                                    <option value="weeks">Weeks</option>
+                                    <option value="months">Months</option>
+                                    <option value="years">Years</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -621,10 +633,20 @@
                                 <option value="monthly">Monthly</option>
                                 <option value="weekly">Weekly</option>
                                 <option value="biweekly">Every 2 weeks</option>
+                                <option value="semimonthly">Twice monthly</option>
+                                <option value="month-end">Last day of month</option>
                                 <option value="quarterly">Quarterly</option>
                                 <option value="yearly">Yearly</option>
+                                <option value="custom">Custom interval</option>
                             </select>
                             <input type="number" id="recurring-day" min="1" max="31" value="1" aria-label="Day of month">
+                            <input type="number" id="recurring-second-day" min="1" max="31" value="15" aria-label="Second day of month" placeholder="Second day">
+                            <input type="number" id="recurring-interval-count" min="1" max="24" value="2" aria-label="Custom interval count" placeholder="Every">
+                            <select id="recurring-interval-unit" aria-label="Custom interval unit">
+                                <option value="weeks">Weeks</option>
+                                <option value="months">Months</option>
+                                <option value="years">Years</option>
+                            </select>
                             <input type="month" id="recurring-start-month" aria-label="Start month">
                             <button id="add-recurring-btn">Add Recurring</button>
                         </div>

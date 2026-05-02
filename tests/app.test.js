@@ -829,6 +829,62 @@ test('recurring transactions generate due manual transactions once', () => {
   assert.equal(app.run('manualTransactions.length'), 1);
 });
 
+test('semimonthly recurring transactions generate both monthly dates', () => {
+  const app = loadApp();
+  const recurring = [{
+    id: 'semi-test',
+    description: 'Allowance',
+    amount: -50,
+    category: 'wants',
+    purchaseType: 'single',
+    frequency: 'semimonthly',
+    dayOfMonth: 5,
+    secondDayOfMonth: 20,
+    startMonth: '2026-04',
+    startDate: '2026-04-05'
+  }];
+
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    recurringTransactions = __testValue;
+    skippedRecurringOccurrences = [];
+    manualTransactions = [];
+    importedTransactions = [];
+    allTransactions = [];
+  `, recurring);
+
+  assert.equal(app.context.applyRecurringTransactions(false), 2);
+  assert.equal(app.run('manualTransactions.map(txn => txn.date).join(\",\")'), '04/05/2026,04/20/2026');
+});
+
+test('month-end recurring transactions clamp to the last day of the month', () => {
+  const app = loadApp();
+  const recurring = [{
+    id: 'month-end-test',
+    description: 'Statement Close',
+    amount: -25,
+    category: 'needs',
+    purchaseType: 'joint',
+    frequency: 'month-end',
+    dayOfMonth: 1,
+    startMonth: '2026-02',
+    startDate: '2026-02-28'
+  }];
+
+  app.run(`
+    budgetCategories = cloneDefaultCategories();
+    recurringTransactions = __testValue;
+    skippedRecurringOccurrences = [];
+    manualTransactions = [];
+    importedTransactions = [];
+    allTransactions = [];
+  `, recurring);
+
+  const generated = app.context.applyRecurringTransactions(false);
+  assert.equal(generated, 2);
+  assert.equal(app.run('manualTransactions.map(txn => txn.date).join(\",\")'), '02/28/2026,03/31/2026');
+});
+
 test('backup validation rejects invalid backups and normalizes valid payloads', () => {
   const app = loadApp();
 

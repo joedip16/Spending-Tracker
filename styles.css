@@ -1237,7 +1237,7 @@ table,
 }
 
 .recurring-add-form {
-    grid-template-columns: 1.3fr 0.8fr 1fr 0.8fr 0.9fr 0.7fr 0.9fr auto;
+    grid-template-columns: 1.3fr 0.8fr 1fr 0.8fr 0.9fr 0.7fr 0.7fr 0.8fr 0.9fr 0.9fr auto;
 }
 
 .category-add-form input,
@@ -1463,6 +1463,23 @@ table,
 .manual-recurring-option select {
     width: 100%;
     margin-top: 10px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.recurring-extra-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.recurring-extra-fields input,
+.recurring-extra-fields select {
+    width: 100%;
     border: 1px solid var(--line);
     border-radius: 14px;
     padding: 10px 12px;
@@ -2149,6 +2166,8 @@ body.dark-mode .category-add-form select,
 body.dark-mode .recurring-add-form input,
 body.dark-mode .recurring-add-form select,
 body.dark-mode .manual-recurring-option select,
+body.dark-mode .recurring-extra-fields input,
+body.dark-mode .recurring-extra-fields select,
 body.dark-mode .backup-format-label select,
 body.dark-mode .transaction-search-panel input,
 body.dark-mode .transaction-search-panel select,
@@ -2202,6 +2221,7 @@ body.dark-mode .nav-btn.active {
     .merchant-rule-add-form,
     .merchant-rule-row,
     .recurring-add-form,
+    .recurring-extra-fields,
     .sync-auth-form,
     .category-row,
     .recurring-row,
