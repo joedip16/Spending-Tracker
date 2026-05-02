@@ -1392,7 +1392,7 @@ function validateBackupPayload(payload) {
         skippedRecurringOccurrences: Array.isArray(data.skippedRecurringOccurrences)
             ? data.skippedRecurringOccurrences.map(value => String(value))
             : [],
-        currentSnapshotTab: ['overview', 'charts', 'comparisons', 'alerts'].includes(data.currentSnapshotTab) ? data.currentSnapshotTab : 'overview',
+        currentSnapshotTab: ['overview', 'charts', 'comparisons', 'forecast', 'alerts'].includes(data.currentSnapshotTab) ? data.currentSnapshotTab : 'overview',
         updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : ''
     };
 }
@@ -3960,6 +3960,106 @@ function buildHomeInsights(snapshot, yearSnapshot, selectedMonths, goals, active
     return insights.slice(0, 6);
 }
 
+function getDaysInMonth(year, monthNumber) {
+    return new Date(year, monthNumber, 0).getDate();
+}
+
+function buildForecastCards(snapshot, yearSnapshot, goals, homeYear) {
+    const chartMonths = getYearChartMonths(homeYear);
+    const referenceMonthName = currentMonth === 'all'
+        ? getLatestActiveMonth(chartMonths, yearSnapshot.monthlyData)
+        : getSelectedMonths()[0];
+    const referenceMonthNumber = parseInt(getMonthValueByName(referenceMonthName), 10);
+    const referenceData = yearSnapshot.monthlyData[referenceMonthName] || snapshot.monthlyData[referenceMonthName];
+    const now = new Date();
+    const isCurrentMonth = homeYear === now.getFullYear() && referenceMonthNumber === now.getMonth() + 1;
+    const daysInMonth = getDaysInMonth(homeYear, referenceMonthNumber);
+    const elapsedDays = isCurrentMonth ? Math.max(now.getDate(), 1) : daysInMonth;
+    const pacingMultiplier = isCurrentMonth ? daysInMonth / elapsedDays : 1;
+    const projectedIncome = (referenceData?.income || 0) * pacingMultiplier;
+    const projectedNeeds = (referenceData?.needs || 0) * pacingMultiplier;
+    const projectedWants = (referenceData?.wants || 0) * pacingMultiplier;
+    const projectedNet = projectedIncome - (projectedNeeds + projectedWants);
+    const projectedNeedsPct = projectedIncome > 0 ? (projectedNeeds / projectedIncome) * 100 : 0;
+    const projectedWantsPct = projectedIncome > 0 ? (projectedWants / projectedIncome) * 100 : 0;
+    const projectedSavingsPct = projectedIncome > 0 ? (projectedNet / projectedIncome) * 100 : 0;
+    const monthsElapsed = chartMonths.length || 1;
+    const yearIncomeProjection = monthsElapsed > 0 ? (yearSnapshot.totals.income / monthsElapsed) * 12 : 0;
+    const yearNeedsProjection = monthsElapsed > 0 ? (yearSnapshot.totals.needs / monthsElapsed) * 12 : 0;
+    const yearWantsProjection = monthsElapsed > 0 ? (yearSnapshot.totals.wants / monthsElapsed) * 12 : 0;
+    const yearSavingsProjection = yearIncomeProjection - (yearNeedsProjection + yearWantsProjection);
+    const formatTargetDelta = (delta, positiveLabel = 'left before target', negativeLabel = 'over target') => (
+        delta >= 0 ? `$${formatMoney(delta)} ${positiveLabel}` : `$${formatMoney(Math.abs(delta))} ${negativeLabel}`
+    );
+
+    const monthlyItems = [
+        {
+            className: 'wants',
+            kicker: 'Month-End Wants',
+            title: `$${formatMoney(projectedWants)} projected`,
+            copy: isCurrentMonth
+                ? `At your current ${referenceMonthName} pace, Wants would finish at ${projectedWantsPct.toFixed(1)}% of income.`
+                : `${referenceMonthName} is already complete, so this reflects the closed-month total.`,
+            metric: projectedIncome > 0
+                ? formatTargetDelta((projectedIncome * goals.wants / 100) - projectedWants)
+                : 'No income recorded for this month yet.'
+        },
+        {
+            className: 'needs',
+            kicker: 'Month-End Needs',
+            title: `$${formatMoney(projectedNeeds)} projected`,
+            copy: isCurrentMonth
+                ? `At your current ${referenceMonthName} pace, Needs would finish at ${projectedNeedsPct.toFixed(1)}% of income.`
+                : `${referenceMonthName} is already complete, so this reflects the closed-month total.`,
+            metric: projectedIncome > 0
+                ? formatTargetDelta((projectedIncome * goals.needs / 100) - projectedNeeds)
+                : 'No income recorded for this month yet.'
+        },
+        {
+            className: 'savings',
+            kicker: 'Month-End Savings',
+            title: `$${formatMoney(projectedNet)} projected`,
+            copy: isCurrentMonth
+                ? `If this pace continues, Savings would finish ${referenceMonthName} at ${projectedSavingsPct.toFixed(1)}% of income.`
+                : `${referenceMonthName} is already complete, so this reflects the closed-month result.`,
+            metric: projectedIncome > 0
+                ? formatTargetDelta(projectedNet - (projectedIncome * goals.savings / 100), 'above target', 'needed to reach target')
+                : 'No income recorded for this month yet.'
+        }
+    ];
+
+    const yearlyItems = [
+        {
+            className: 'wants',
+            kicker: 'Year-End Pace',
+            title: `$${formatMoney(yearWantsProjection)} Wants`,
+            copy: `If the current ${monthsElapsed}-month pace holds, Wants would finish the year around ${yearIncomeProjection > 0 ? ((yearWantsProjection / yearIncomeProjection) * 100).toFixed(1) : '0.0'}% of income.`,
+            metric: formatTargetDelta((yearIncomeProjection * goals.wants / 100) - yearWantsProjection, 'under yearly target pace', 'over yearly target pace')
+        },
+        {
+            className: 'needs',
+            kicker: 'Year-End Pace',
+            title: `$${formatMoney(yearNeedsProjection)} Needs`,
+            copy: `Projected from your year-to-date pace across ${monthsElapsed} month${monthsElapsed === 1 ? '' : 's'}.`,
+            metric: formatTargetDelta((yearIncomeProjection * goals.needs / 100) - yearNeedsProjection, 'under yearly target pace', 'over yearly target pace')
+        },
+        {
+            className: 'savings',
+            kicker: 'Year-End Pace',
+            title: `$${formatMoney(yearSavingsProjection)} Savings`,
+            copy: `If nothing changes, the year would finish around ${yearIncomeProjection > 0 ? ((yearSavingsProjection / yearIncomeProjection) * 100).toFixed(1) : '0.0'}% saved.`,
+            metric: formatTargetDelta(yearSavingsProjection - (yearIncomeProjection * goals.savings / 100), 'above yearly target pace', 'below yearly target pace')
+        }
+    ];
+
+    return {
+        summary: isCurrentMonth
+            ? `Forecasting ${referenceMonthName} ${homeYear} using ${elapsedDays} of ${daysInMonth} days so far, plus a year-end pace based on ${monthsElapsed} month${monthsElapsed === 1 ? '' : 's'}.`
+            : `Showing the closed ${referenceMonthName} ${homeYear} result plus a year-end pace based on ${monthsElapsed} month${monthsElapsed === 1 ? '' : 's'}.`,
+        cards: [...monthlyItems, ...yearlyItems]
+    };
+}
+
 function applyInsightAction(encodedAction) {
     if (!encodedAction) return;
 
@@ -4235,6 +4335,17 @@ function renderHomeDashboard() {
         `<div class="comparison-card"><p class="panel-kicker">Needs vs Wants</p><strong>${(snapshot.avgNeeds - snapshot.avgWants >= 0 ? '+' : '')}$${formatMoney(snapshot.avgNeeds - snapshot.avgWants)}</strong><span>Average monthly difference between needs and wants.</span></div>`,
         `<div class="comparison-card"><p class="panel-kicker">Spending Ratio</p><strong>${snapshot.avgWants === 0 ? '—' : `${(snapshot.avgNeeds / snapshot.avgWants).toFixed(2)}x`}</strong><span>Needs compared with wants during this period.</span></div>`
     ].join('');
+
+    const forecast = buildForecastCards(snapshot, yearSnapshot, goals, homeYear);
+    document.getElementById('forecast-summary').textContent = forecast.summary;
+    document.getElementById('forecast-cards').innerHTML = forecast.cards.map(card => `
+        <div class="comparison-card forecast-card ${card.className}">
+            <p class="panel-kicker">${card.kicker}</p>
+            <strong>${card.title}</strong>
+            <span>${card.copy}</span>
+            <span class="forecast-metric">${card.metric}</span>
+        </div>
+    `).join('');
 
     switchSnapshotTab(currentSnapshotTab);
 }

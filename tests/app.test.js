@@ -846,14 +846,14 @@ test('backup validation rejects invalid backups and normalizes valid payloads', 
       budgetCategories: {},
       recurringTransactions: [{ id: 'demo' }],
       skippedRecurringOccurrences: [123],
-      currentSnapshotTab: 'charts',
+      currentSnapshotTab: 'forecast',
       updatedAt: '2026-04-22T16:00:00.000Z'
     }
   });
 
   assert.equal(validated.profile.name, 'Tester');
   assert.equal(validated.budgetGoals.needs, 50);
-  assert.equal(validated.currentSnapshotTab, 'charts');
+  assert.equal(validated.currentSnapshotTab, 'forecast');
   assert.deepEqual(validated.skippedRecurringOccurrences, ['123']);
 });
 
@@ -964,4 +964,34 @@ test('sync payload validation includes required app state and updatedAt', () => 
   assert.equal(payload.budgetGoals.savings, 20);
   assert.equal(payload.merchantRules.length, 1);
   assert.match(payload.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('forecast cards project current month pace and yearly pace', () => {
+  const app = loadApp();
+  const snapshot = {
+    totals: { income: 4200, needs: 1800, wants: 900, expenses: 2700 },
+    monthlyData: {},
+    avgNetPercent: 35.7
+  };
+  const yearSnapshot = {
+    totals: { income: 16800, needs: 7200, wants: 3600 },
+    monthlyData: {
+      January: { income: 4000, needs: 1700, wants: 800, expenses: 2500 },
+      February: { income: 4100, needs: 1750, wants: 850, expenses: 2600 },
+      March: { income: 4200, needs: 1800, wants: 900, expenses: 2700 },
+      April: { income: 4200, needs: 1800, wants: 900, expenses: 2700 }
+    }
+  };
+
+  app.run(`
+    currentYear = 2026;
+    currentMonth = '4';
+  `);
+
+  const forecast = app.context.buildForecastCards(snapshot, yearSnapshot, { needs: 50, wants: 30, savings: 20 }, 2026);
+  assert.match(forecast.summary, /Forecasting April 2026/);
+  assert.equal(forecast.cards.length, 6);
+  assert.equal(forecast.cards[0].className, 'wants');
+  assert.match(forecast.cards[0].title, /\$1,227\.27 projected/);
+  assert.match(forecast.cards[2].metric, /above target|needed to reach target/);
 });

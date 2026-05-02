@@ -12,7 +12,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260428-collapsible-breakdown-groups">
+    <link rel="stylesheet" href="styles.css?v=20260502-forecast-view">
 </head>
 <body>
     <div id="app-splash" class="app-splash" aria-hidden="true">
@@ -101,6 +101,7 @@
                                 <button id="snapshot-tab-overview" class="snapshot-tab active" data-tab="overview">Overview</button>
                                 <button id="snapshot-tab-charts" class="snapshot-tab" data-tab="charts">Charts</button>
                                 <button id="snapshot-tab-comparisons" class="snapshot-tab" data-tab="comparisons">Comparisons</button>
+                                <button id="snapshot-tab-forecast" class="snapshot-tab" data-tab="forecast">Forecast</button>
                                 <button id="snapshot-tab-alerts" class="snapshot-tab" data-tab="alerts">Alerts</button>
                             </div>
                             <div id="snapshot-overview-panel" class="snapshot-panel active">
@@ -142,6 +143,12 @@
                             </div>
                             <div id="snapshot-comparisons-panel" class="snapshot-panel">
                                 <div id="comparison-cards" class="comparison-card-grid"></div>
+                            </div>
+                            <div id="snapshot-forecast-panel" class="snapshot-panel">
+                                <div class="snapshot-overview-copy">
+                                    <p id="forecast-summary" class="panel-copy">See how your current pace could finish the month and the year.</p>
+                                </div>
+                                <div id="forecast-cards" class="comparison-card-grid"></div>
                             </div>
                             <div id="snapshot-alerts-panel" class="snapshot-panel">
                                 <div id="home-insight-list" class="insight-list"></div>
@@ -814,9 +821,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script src="firebase-config.js?v=20260501-category-last-used-default"></script>
+    <script src="firebase-config.js?v=20260502-forecast-view"></script>
     <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js?v=20260501-category-last-used-default"></script>
+    <script src="script.js?v=20260502-forecast-view"></script>
 </body>
 </html>

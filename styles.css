@@ -847,6 +847,43 @@ table,
     font-size: 0.92rem;
 }
 
+.forecast-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.forecast-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    background: var(--blue);
+}
+
+.forecast-card.needs::before {
+    background: var(--needs);
+}
+
+.forecast-card.wants::before {
+    background: var(--wants);
+}
+
+.forecast-card.savings::before {
+    background: var(--savings);
+}
+
+.forecast-card strong {
+    line-height: 1.15;
+}
+
+.forecast-card .forecast-metric {
+    display: block;
+    margin-top: 10px;
+    color: var(--text);
+    font-size: 0.98rem;
+    font-weight: 700;
+}
+
 .insight-item strong {
     display: block;
     font-size: 1.1rem;
